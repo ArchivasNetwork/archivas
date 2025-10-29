@@ -1,0 +1,45 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+        
+    - name: Download dependencies
+      run: go mod download
+      
+    - name: Build archivas-node
+      run: go build -v -o bin/archivas-node ./cmd/archivas-node
+      
+    - name: Build archivas-farmer
+      run: go build -v -o bin/archivas-farmer ./cmd/archivas-farmer
+      
+    - name: Build archivas-timelord
+      run: go build -v -o bin/archivas-timelord ./cmd/archivas-timelord
+      
+    - name: Build archivas-wallet
+      run: go build -v -o bin/archivas-wallet ./cmd/archivas-wallet
+      
+    - name: Run tests
+      run: go test -v ./...
+      
+    - name: Upload binaries
+      uses: actions/upload-artifact@v3
+      with:
+        name: archivas-binaries
+        path: bin/
+

@@ -1,0 +1,53 @@
+# Binaries
+/bin/
+/build/
+/dist/
+archivas-node
+archivas-farmer
+archivas-timelord
+archivas-wallet
+archivas-harvester
+
+# Data directories
+/archivas-data/
+/data/
+/node-*-data/
+*.db/
+
+# Plots
+/plots/
+/test-plots/
+*.arcv
+
+# Logs
+/logs/
+*.log
+node.log
+node-*.log
+
+# Test artifacts
+farmer-wallet.txt
+/tmp/
+
+# Go build cache
+*.test
+*.out
+*.prof
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets (important!)
+*.key
+*.pem
+private-keys.txt
+secrets/
+
