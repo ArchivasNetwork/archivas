@@ -2,9 +2,10 @@ package main
 
 import (
 	"crypto/sha256"
+	"flag"
 	"fmt"
 	"log"
-	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/iljanemesis/archivas/consensus"
 	"github.com/iljanemesis/archivas/ledger"
 	"github.com/iljanemesis/archivas/mempool"
+	"github.com/iljanemesis/archivas/p2p"
 	"github.com/iljanemesis/archivas/pospace"
 	"github.com/iljanemesis/archivas/rpc"
 	"github.com/iljanemesis/archivas/storage"
@@ -41,11 +43,35 @@ type NodeState struct {
 	BlockStore *storage.BlockStorage
 	StateStore *storage.StateStorage
 	MetaStore  *storage.MetadataStorage
+	// Networking
+	P2P *p2p.Network
 }
 
 func main() {
-	log.Println("[DEBUG] Archivas node starting...")
+	// Parse CLI flags
+	rpcAddr := flag.String("rpc", ":8080", "RPC listen address")
+	p2pAddr := flag.String("p2p", ":9090", "P2P listen address")
+	peerAddrs := flag.String("peer", "", "Comma-separated peer addresses (e.g., ip1:9090,ip2:9090)")
+	dbPath := flag.String("db", "./data", "Database directory path")
+	vdfRequired := flag.Bool("vdf-required", false, "Require VDF proofs in blocks (PoSpace+Time mode)")
+	flag.Parse()
+
+	log.Println("[startup] Archivas node starting...")
 	fmt.Println("Archivas Devnet Node running…")
+	fmt.Println()
+
+	fmt.Printf("🔧 Configuration:\n")
+	fmt.Printf("   RPC:  %s\n", *rpcAddr)
+	fmt.Printf("   P2P:  %s\n", *p2pAddr)
+	if *peerAddrs != "" {
+		fmt.Printf("   Peers: %s\n", *peerAddrs)
+	}
+	fmt.Printf("   DB:   %s\n", *dbPath)
+	if *vdfRequired {
+		fmt.Printf("   Mode: PoSpace+Time (VDF required)\n")
+	} else {
+		fmt.Printf("   Mode: PoSpace only\n")
+	}
 	fmt.Println()
 
 	// Display chain configuration
@@ -63,12 +89,8 @@ func main() {
 
 	// Open database
 	log.Println("[DEBUG] Opening database...")
-	dbPath := os.Getenv("ARCHIVAS_DB_PATH")
-	if dbPath == "" {
-		dbPath = "./archivas-data"
-	}
 
-	db, err := storage.OpenDB(dbPath)
+	db, err := storage.OpenDB(*dbPath)
 	if err != nil {
 		log.Fatalf("Failed to open database: %v", err)
 	}
@@ -78,7 +100,7 @@ func main() {
 	stateStore := storage.NewStateStorage(db)
 	metaStore := storage.NewMetadataStorage(db)
 
-	fmt.Printf("💾 Database opened: %s\n", dbPath)
+	fmt.Printf("💾 Database opened: %s\n", *dbPath)
 	fmt.Println()
 
 	// Try to load existing state from disk
@@ -243,13 +265,42 @@ func main() {
 	fmt.Printf("🔍 Current challenge: %x\n", genesisChallenge[:8])
 	fmt.Println()
 
+	// Start P2P network if enabled
+	var p2pNet *p2p.Network
+	if *p2pAddr != "" {
+		log.Printf("[p2p] Starting P2P listener on %s", *p2pAddr)
+		p2pNet = p2p.NewNetwork(*p2pAddr, nodeState)
+		if err := p2pNet.Start(); err != nil {
+			log.Fatalf("[p2p] Failed to start P2P: %v", err)
+		}
+		nodeState.P2P = p2pNet
+		fmt.Printf("🌐 P2P network started on %s\n", *p2pAddr)
+
+		// Connect to initial peers
+		if *peerAddrs != "" {
+			peers := strings.Split(*peerAddrs, ",")
+			for _, peer := range peers {
+				peer = strings.TrimSpace(peer)
+				if peer != "" {
+					go func(addr string) {
+						if err := p2pNet.ConnectPeer(addr); err != nil {
+							log.Printf("[p2p] Failed to connect to peer %s: %v", addr, err)
+						}
+					}(peer)
+				}
+			}
+			fmt.Printf("📡 Connecting to %d peer(s)...\n", len(peers))
+		}
+		fmt.Println()
+	}
+
 	// Start RPC server in background
 	log.Println("[DEBUG] Starting RPC server...")
 	server := rpc.NewFarmingServer(nodeState.WorldState, nodeState.Mempool, nodeState)
 	go func() {
-		log.Println("[rpc] starting server on :8080")
-		fmt.Println("🌐 Starting RPC server on :8080")
-		if err := server.Start(":8080"); err != nil {
+		log.Printf("[rpc] starting server on %s", *rpcAddr)
+		fmt.Printf("🌐 Starting RPC server on %s\n", *rpcAddr)
+		if err := server.Start(*rpcAddr); err != nil {
 			log.Fatalf("[rpc] server error: %v", err)
 		}
 	}()
@@ -404,7 +455,53 @@ func (ns *NodeState) AcceptBlock(proof *pospace.Proof, farmerAddr string, farmer
 	fmt.Printf("⚙️  Difficulty adjusted to: %d\n", ns.Consensus.DifficultyTarget)
 	log.Println("[storage] ✅ State persisted to disk")
 
+	// Gossip new block to peers
+	if ns.P2P != nil {
+		ns.P2P.BroadcastNewBlock(nextHeight, newBlockHash)
+	}
+
 	return nil
+}
+
+// P2P NodeHandler implementation
+func (ns *NodeState) OnNewBlock(height uint64, hash [32]byte, fromPeer string) {
+	log.Printf("[p2p] Peer %s announced block %d", fromPeer, height)
+
+	ns.RLock()
+	currentHeight := ns.CurrentHeight
+	ns.RUnlock()
+
+	// If we're behind, request the block
+	if height > currentHeight {
+		log.Printf("[p2p] We're behind (our height=%d, peer height=%d), requesting block", currentHeight, height)
+		if ns.P2P != nil {
+			ns.P2P.RequestBlock(height)
+		}
+	}
+}
+
+func (ns *NodeState) OnBlockRequest(height uint64) (interface{}, error) {
+	ns.RLock()
+	defer ns.RUnlock()
+
+	if int(height) >= len(ns.Chain) {
+		return nil, fmt.Errorf("block not found")
+	}
+
+	return ns.Chain[height], nil
+}
+
+func (ns *NodeState) GetStatus() (uint64, uint64, [32]byte) {
+	ns.RLock()
+	defer ns.RUnlock()
+
+	if len(ns.Chain) == 0 {
+		return 0, ns.Consensus.DifficultyTarget, [32]byte{}
+	}
+
+	tipBlock := ns.Chain[len(ns.Chain)-1]
+	tipHash := hashBlock(&tipBlock)
+	return ns.CurrentHeight, ns.Consensus.DifficultyTarget, tipHash
 }
 
 // GetCurrentChallenge returns the current challenge and difficulty
