@@ -191,13 +191,14 @@ func cmdFarm() {
 			continue
 		}
 
-		// Only check if height changed
-		if challengeInfo.Height == lastHeight {
-			continue
+		// Log when height changes
+		if challengeInfo.Height != lastHeight {
+			fmt.Printf("\n🔍 NEW HEIGHT %d (difficulty: %d)\n", challengeInfo.Height, challengeInfo.Difficulty)
+			lastHeight = challengeInfo.Height
 		}
-		lastHeight = challengeInfo.Height
 
-		fmt.Printf("🔍 Checking challenge for height %d (difficulty: %d)...\n", challengeInfo.Height, challengeInfo.Difficulty)
+		// Always check plots (VDF changes constantly = new challenge!)
+		fmt.Printf("⚙️  Checking plots...")
 		if challengeInfo.VDF != nil {
 			fmt.Printf("   VDF: iter=%d\n", challengeInfo.VDF.Iterations)
 		}
@@ -231,9 +232,11 @@ func cmdFarm() {
 				fmt.Printf("✅ Block submitted successfully for height %d (VDF t=%d)\n", challengeInfo.Height, vdfIter)
 			}
 		} else {
-			fmt.Printf("   No winning proof this round (best quality: %d, need: <%d)\n", 
-				func() uint64 { if bestProof != nil { return bestProof.Quality }; return 0 }(), 
-				challengeInfo.Difficulty)
+			bestQ := uint64(0)
+			if bestProof != nil {
+				bestQ = bestProof.Quality
+			}
+			fmt.Printf(" best=%d, need=<%d\n", bestQ, challengeInfo.Difficulty)
 		}
 	}
 }
