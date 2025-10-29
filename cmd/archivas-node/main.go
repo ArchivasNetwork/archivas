@@ -46,7 +46,9 @@ type NodeState struct {
 	StateStore *storage.StateStorage
 	MetaStore  *storage.MetadataStorage
 	// Networking
-	P2P *p2p.Network
+	P2P         *p2p.Network
+	GenesisHash [32]byte
+	NetworkID   string
 	// VDF state (updated by timelord)
 	VDFSeed       []byte
 	VDFIterations uint64
@@ -61,6 +63,9 @@ func main() {
 	peerAddrs := flag.String("peer", "", "Comma-separated peer addresses (e.g., ip1:9090,ip2:9090)")
 	dbPath := flag.String("db", "./data", "Database directory path")
 	vdfRequired := flag.Bool("vdf-required", false, "Require VDF proofs in blocks (PoSpace+Time mode)")
+	genesisPath := flag.String("genesis", "", "Genesis file path (required on first start)")
+	networkID := flag.String("network-id", "archivas-devnet-v1", "Network ID")
+	bootnodes := flag.String("bootnodes", "", "Comma-separated bootnode addresses")
 	flag.Parse()
 
 	log.Println("[startup] Archivas node starting...")
@@ -547,6 +552,13 @@ func (ns *NodeState) HasBlock(height uint64) bool {
 	ns.RLock()
 	defer ns.RUnlock()
 	return int(height) < len(ns.Chain)
+}
+
+// GetGenesisHash returns the genesis hash
+func (ns *NodeState) GetGenesisHash() [32]byte {
+	ns.RLock()
+	defer ns.RUnlock()
+	return ns.GenesisHash
 }
 
 // VerifyAndApplyBlock verifies and applies a block received from a peer

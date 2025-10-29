@@ -18,6 +18,7 @@ type NodeState interface {
 	GetCurrentChallenge() ([32]byte, uint64, uint64)
 	GetStatus() (height uint64, difficulty uint64, tipHash [32]byte)
 	GetCurrentVDF() (seed []byte, iterations uint64, output []byte, hasVDF bool)
+	GetGenesisHash() [32]byte
 }
 
 // FarmingServer extends Server with farming capabilities
@@ -50,6 +51,9 @@ func (s *FarmingServer) Start(addr string) error {
 	// VDF/Timelord endpoints
 	http.HandleFunc("/chainTip", s.handleChainTip)
 	http.HandleFunc("/vdf/update", s.handleVDFUpdate)
+	
+	// Network endpoints
+	http.HandleFunc("/genesisHash", s.handleGenesisHash)
 
 	return http.ListenAndServe(addr, nil)
 }
@@ -217,6 +221,25 @@ func (s *FarmingServer) handleVDFUpdate(w http.ResponseWriter, r *http.Request) 
 	response := SubmitTxResponse{
 		Status:  "success",
 		Message: "VDF update received",
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleGenesisHash handles GET /genesisHash
+func (s *FarmingServer) handleGenesisHash(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	genesisHash := s.nodeState.GetGenesisHash()
+
+	response := struct {
+		GenesisHash string `json:"genesisHash"`
+	}{
+		GenesisHash: hex.EncodeToString(genesisHash[:]),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
