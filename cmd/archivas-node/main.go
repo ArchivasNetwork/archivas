@@ -2,9 +2,11 @@ package main
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -524,6 +526,13 @@ func (ns *NodeState) UpdateVDFState(seed []byte, iterations uint64, output []byt
 	ns.VDFIterations = iterations
 	ns.VDFOutput = output
 	ns.HasVDF = true
+	
+	// CRITICAL: Update challenge based on new VDF output!
+	// Challenge should be H(VDF_output || height)
+	h := sha256.New()
+	h.Write(output)
+	binary.Write(h, binary.BigEndian, ns.CurrentHeight+1)
+	ns.CurrentChallenge = sha256.Sum256(h.Sum(nil))
 }
 
 // GetCurrentChallenge returns the current challenge and difficulty
