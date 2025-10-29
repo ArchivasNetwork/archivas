@@ -198,10 +198,14 @@ func cmdFarm() {
 		lastHeight = challengeInfo.Height
 
 		fmt.Printf("🔍 Checking challenge for height %d (difficulty: %d)...\n", challengeInfo.Height, challengeInfo.Difficulty)
+		if challengeInfo.VDF != nil {
+			fmt.Printf("   VDF: iter=%d\n", challengeInfo.VDF.Iterations)
+		}
 
 		// Check all plots
 		var bestProof *pospace.Proof
 		for _, plot := range plots {
+			fmt.Printf("   Scanning plot %s...\n", filepath.Base(plot.Path))
 			proof, err := plot.CheckChallenge(challengeInfo.Challenge, challengeInfo.Difficulty)
 			if err != nil {
 				fmt.Printf("⚠️  Error checking plot %s: %v\n", filepath.Base(plot.Path), err)
@@ -215,24 +219,34 @@ func cmdFarm() {
 
 		if bestProof != nil && bestProof.Quality < challengeInfo.Difficulty {
 			fmt.Printf("🎉 Found winning proof! Quality: %d (target: %d)\n", bestProof.Quality, challengeInfo.Difficulty)
-
+			
 			// Submit block with VDF info
 			if err := submitBlock(*nodeURL, bestProof, farmerAddr, farmerPubKey, privKeyBytes, challengeInfo); err != nil {
 				fmt.Printf("❌ Error submitting block: %v\n", err)
 			} else {
-				fmt.Printf("✅ Block submitted successfully for height %d (VDF t=%d)\n", challengeInfo.Height, challengeInfo.VDFIterations)
+				vdfIter := uint64(0)
+				if challengeInfo.VDF != nil {
+					vdfIter = challengeInfo.VDF.Iterations
+				}
+				fmt.Printf("✅ Block submitted successfully for height %d (VDF t=%d)\n", challengeInfo.Height, vdfIter)
 			}
+		} else {
+			fmt.Printf("   No winning proof this round (best quality: %d, need: <%d)\n", 
+				func() uint64 { if bestProof != nil { return bestProof.Quality }; return 0 }(), 
+				challengeInfo.Difficulty)
 		}
 	}
 }
 
 type ChallengeInfo struct {
-	Challenge     [32]byte `json:"challenge"`
-	Difficulty    uint64   `json:"difficulty"`
-	Height        uint64   `json:"height"`
-	VDFSeed       []byte   `json:"vdfSeed"`
-	VDFIterations uint64   `json:"vdfIterations"`
-	VDFOutput     []byte   `json:"vdfOutput"`
+	Challenge  [32]byte `json:"challenge"`
+	Difficulty uint64   `json:"difficulty"`
+	Height     uint64   `json:"height"`
+	VDF        *struct {
+		Seed       string `json:"seed"`       // hex-encoded
+		Iterations uint64 `json:"iterations"`
+		Output     string `json:"output"`     // hex-encoded
+	} `json:"vdf,omitempty"`
 }
 
 func getChallenge(nodeURL string) (*ChallengeInfo, error) {
@@ -249,21 +263,32 @@ func getChallenge(nodeURL string) (*ChallengeInfo, error) {
 
 	var info ChallengeInfo
 	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to decode challenge: %w", err)
+	}
+
+	// Debug: verify challenge decoded
+	if len(info.Challenge) == 0 {
+		return nil, fmt.Errorf("challenge is empty after decode")
 	}
 
 	return &info, nil
 }
 
 func submitBlock(nodeURL string, proof *pospace.Proof, farmerAddr string, farmerPubKey []byte, privKey []byte, challenge *ChallengeInfo) error {
-	// Create block submission with VDF info
+	// Create block submission (VDF fields only if available)
 	submission := map[string]interface{}{
-		"proof":         proof,
-		"farmerAddr":    farmerAddr,
-		"farmerPubKey":  hex.EncodeToString(farmerPubKey),
-		"vdfSeed":       challenge.VDFSeed,
-		"vdfIterations": challenge.VDFIterations,
-		"vdfOutput":     challenge.VDFOutput,
+		"proof":        proof,
+		"farmerAddr":   farmerAddr,
+		"farmerPubKey": hex.EncodeToString(farmerPubKey),
+	}
+	
+	// Add VDF info if present (for PoSpace+Time mode)
+	if challenge.VDF != nil {
+		vdfSeed, _ := hex.DecodeString(challenge.VDF.Seed)
+		vdfOutput, _ := hex.DecodeString(challenge.VDF.Output)
+		submission["vdfSeed"] = vdfSeed
+		submission["vdfIterations"] = challenge.VDF.Iterations
+		submission["vdfOutput"] = vdfOutput
 	}
 
 	data, err := json.Marshal(submission)
