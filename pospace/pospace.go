@@ -143,6 +143,9 @@ func (p *PlotFile) CheckChallenge(challenge [32]byte, difficultyTarget uint64) (
 
 	bestQuality := uint64(^uint64(0)) // max uint64
 	var bestProof *Proof
+	
+	// Debug: Log challenge being used
+	// fmt.Printf("[pospace] CheckChallenge: challenge=%x entries=%d\n", challenge[:8], p.Header.NumHashes)
 
 	// Read through all hashes
 	for i := uint64(0); i < p.Header.NumHashes; i++ {

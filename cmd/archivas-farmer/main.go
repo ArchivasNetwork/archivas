@@ -269,10 +269,13 @@ func getChallenge(nodeURL string) (*ChallengeInfo, error) {
 		return nil, fmt.Errorf("failed to decode challenge: %w", err)
 	}
 
-	// Debug: verify challenge decoded
+	// Debug: verify challenge decoded and log it
 	if len(info.Challenge) == 0 {
 		return nil, fmt.Errorf("challenge is empty after decode")
 	}
+	
+	// Log challenge value to verify it's changing
+	fmt.Printf("   Challenge: %x...\n", info.Challenge[:8])
 
 	return &info, nil
 }
