@@ -17,6 +17,7 @@ type NodeState interface {
 	AcceptBlock(proof *pospace.Proof, farmerAddr string, farmerPubKey []byte) error
 	GetCurrentChallenge() ([32]byte, uint64, uint64)
 	GetStatus() (height uint64, difficulty uint64, tipHash [32]byte)
+	GetCurrentVDF() (seed []byte, iterations uint64, output []byte, hasVDF bool)
 }
 
 // FarmingServer extends Server with farming capabilities
@@ -68,6 +69,15 @@ func (s *FarmingServer) handleGetChallenge(w http.ResponseWriter, r *http.Reques
 		Challenge:  challenge,
 		Difficulty: difficulty,
 		Height:     height,
+	}
+
+	// Include VDF info if available (for PoSpace+Time farming)
+	if seed, iterations, output, hasVDF := s.nodeState.GetCurrentVDF(); hasVDF {
+		response.VDF = &VDFInfo{
+			Seed:       hex.EncodeToString(seed),
+			Iterations: iterations,
+			Output:     hex.EncodeToString(output),
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -184,8 +194,14 @@ func (s *FarmingServer) handleVDFUpdate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// For now, just log the update (node in PoSpace-only mode doesn't enforce VDF)
-	// In VDF mode, this would update the node's VDF state
+	// Store VDF update in node state (for /challenge to include)
+	// In full VDF mode, this would also verify and enforce VDF proofs
+	if updater, ok := s.nodeState.(interface {
+		UpdateVDFState(seed []byte, iterations uint64, output []byte)
+	}); ok {
+		updater.UpdateVDFState(update.Seed, update.Iterations, update.Output)
+	}
+	
 	seedPreview := update.Seed
 	if len(seedPreview) > 8 {
 		seedPreview = seedPreview[:8]

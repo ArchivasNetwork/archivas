@@ -23,14 +23,14 @@ type ChallengeResponse struct {
 	Challenge  [32]byte `json:"challenge"`
 	Difficulty uint64   `json:"difficulty"`
 	Height     uint64   `json:"height"`
-	VDF        *VDFInfo `json:"vdf,omitempty"` // Optional VDF info
+	VDF        *VDFInfo `json:"vdf,omitempty"` // Optional VDF info (included if timelord active)
 }
 
-// VDFInfo represents VDF state in challenge response
+// VDFInfo represents VDF state in challenge response  
 type VDFInfo struct {
-	Seed       []byte `json:"seed"`
+	Seed       string `json:"seed"`       // hex-encoded for JSON clarity
 	Iterations uint64 `json:"iterations"`
-	Output     []byte `json:"output"`
+	Output     string `json:"output"`     // hex-encoded for JSON clarity
 }
 
 // BlockSubmission represents a block submission from a farmer (used by farming.go)

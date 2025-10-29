@@ -45,6 +45,11 @@ type NodeState struct {
 	MetaStore  *storage.MetadataStorage
 	// Networking
 	P2P *p2p.Network
+	// VDF state (updated by timelord)
+	VDFSeed       []byte
+	VDFIterations uint64
+	VDFOutput     []byte
+	HasVDF        bool
 }
 
 func main() {
@@ -494,14 +499,31 @@ func (ns *NodeState) OnBlockRequest(height uint64) (interface{}, error) {
 func (ns *NodeState) GetStatus() (uint64, uint64, [32]byte) {
 	ns.RLock()
 	defer ns.RUnlock()
-
+	
 	if len(ns.Chain) == 0 {
 		return 0, ns.Consensus.DifficultyTarget, [32]byte{}
 	}
-
+	
 	tipBlock := ns.Chain[len(ns.Chain)-1]
 	tipHash := hashBlock(&tipBlock)
 	return ns.CurrentHeight, ns.Consensus.DifficultyTarget, tipHash
+}
+
+// GetCurrentVDF returns current VDF state (if timelord is active)
+func (ns *NodeState) GetCurrentVDF() (seed []byte, iterations uint64, output []byte, hasVDF bool) {
+	ns.RLock()
+	defer ns.RUnlock()
+	return ns.VDFSeed, ns.VDFIterations, ns.VDFOutput, ns.HasVDF
+}
+
+// UpdateVDFState updates the VDF state from timelord
+func (ns *NodeState) UpdateVDFState(seed []byte, iterations uint64, output []byte) {
+	ns.Lock()
+	defer ns.Unlock()
+	ns.VDFSeed = seed
+	ns.VDFIterations = iterations
+	ns.VDFOutput = output
+	ns.HasVDF = true
 }
 
 // GetCurrentChallenge returns the current challenge and difficulty

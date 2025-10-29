@@ -45,21 +45,21 @@ func printUsage() {
 	fmt.Println("  archivas-farmer farm [flags]   Start farming")
 	fmt.Println()
 	fmt.Println("Plot flags:")
-	fmt.Println("  --path <dir>        Directory to store plot (default: ./plots)")
-	fmt.Println("  --size <k>          Plot size parameter k (2^k hashes, default: 20)")
-	fmt.Println("  --farmer-key <hex>  Farmer public key (compressed, 33 bytes hex)")
+	fmt.Println("  --path <dir>            Directory to store plot (default: ./plots)")
+	fmt.Println("  --size <k>              Plot size parameter k (2^k hashes, default: 20)")
+	fmt.Println("  --farmer-pubkey <hex>   Farmer public key (compressed, 33 bytes hex)")
 	fmt.Println()
 	fmt.Println("Farm flags:")
-	fmt.Println("  --plots <dir>       Directory containing plots (default: ./plots)")
-	fmt.Println("  --node <url>        Node RPC URL (default: http://localhost:8080)")
-	fmt.Println("  --farmer-key <hex>  Farmer private key (32 bytes hex)")
+	fmt.Println("  --plots <dir>           Directory containing plots (default: ./plots)")
+	fmt.Println("  --node <url>            Node RPC URL (default: http://localhost:8080)")
+	fmt.Println("  --farmer-privkey <hex>  Farmer PRIVATE key (32 bytes hex) ⚠️ KEEP SECRET!")
 }
 
 func cmdPlot() {
 	plotFlags := flag.NewFlagSet("plot", flag.ExitOnError)
 	plotPath := plotFlags.String("path", "./plots", "Plot directory")
 	kSize := plotFlags.Int("size", 20, "Plot size (k parameter)")
-	farmerKeyHex := plotFlags.String("farmer-key", "", "Farmer public key (hex)")
+	farmerPubKeyHex := plotFlags.String("farmer-pubkey", "", "Farmer public key (compressed, 33 bytes hex)")
 
 	plotFlags.Parse(os.Args[2:])
 
@@ -69,10 +69,10 @@ func cmdPlot() {
 		os.Exit(1)
 	}
 
-	// Generate or parse farmer key
+	// Generate or parse farmer public key
 	var farmerPubKey []byte
-	if *farmerKeyHex == "" {
-		fmt.Println("No farmer key provided, generating new keypair...")
+	if *farmerPubKeyHex == "" {
+		fmt.Println("No --farmer-pubkey provided, generating new keypair...")
 		privKey, pubKey, err := wallet.GenerateKeypair()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error generating keypair: %v\n", err)
@@ -83,16 +83,16 @@ func cmdPlot() {
 		addr, _ := wallet.PubKeyToAddress(pubKey)
 		fmt.Printf("Generated new farmer identity:\n")
 		fmt.Printf("  Address:     %s\n", addr)
-		fmt.Printf("  Public Key:  %s\n", hex.EncodeToString(pubKey))
-		fmt.Printf("  Private Key: %s\n", hex.EncodeToString(privKey))
+		fmt.Printf("  Public Key:  %s (use for --farmer-pubkey)\n", hex.EncodeToString(pubKey))
+		fmt.Printf("  Private Key: %s (use for --farmer-privkey) ⚠️ KEEP SECRET!\n", hex.EncodeToString(privKey))
 		fmt.Println()
-		fmt.Println("⚠️  Save your private key to use for farming!")
+		fmt.Println("⚠️  Save both keys! You'll need the private key to farm.")
 		fmt.Println()
 	} else {
 		var err error
-		farmerPubKey, err = hex.DecodeString(*farmerKeyHex)
+		farmerPubKey, err = hex.DecodeString(*farmerPubKeyHex)
 		if err != nil || len(farmerPubKey) != 33 {
-			fmt.Println("Error: farmer-key must be 33 bytes (66 hex chars) compressed public key")
+			fmt.Println("Error: --farmer-pubkey must be 33 bytes (66 hex chars) compressed public key")
 			os.Exit(1)
 		}
 	}
@@ -126,19 +126,21 @@ func cmdFarm() {
 	farmFlags := flag.NewFlagSet("farm", flag.ExitOnError)
 	plotsDir := farmFlags.String("plots", "./plots", "Plots directory")
 	nodeURL := farmFlags.String("node", "http://localhost:8080", "Node RPC URL")
-	farmerKeyHex := farmFlags.String("farmer-key", "", "Farmer private key (hex)")
+	farmerPrivKeyHex := farmFlags.String("farmer-privkey", "", "Farmer PRIVATE key (32 bytes hex) ⚠️ KEEP SECRET!")
 
 	farmFlags.Parse(os.Args[2:])
 
-	if *farmerKeyHex == "" {
-		fmt.Println("Error: --farmer-key is required for farming")
+	if *farmerPrivKeyHex == "" {
+		fmt.Println("Error: --farmer-privkey is required for farming")
+		fmt.Println("Generate a wallet first: ./archivas-wallet new")
 		os.Exit(1)
 	}
 
 	// Parse farmer private key
-	privKeyBytes, err := hex.DecodeString(*farmerKeyHex)
+	privKeyBytes, err := hex.DecodeString(*farmerPrivKeyHex)
 	if err != nil || len(privKeyBytes) != 32 {
-		fmt.Println("Error: farmer-key must be 32 bytes (64 hex chars)")
+		fmt.Println("Error: --farmer-privkey must be 32 bytes (64 hex chars)")
+		fmt.Println("Get your private key from: ./archivas-wallet new")
 		os.Exit(1)
 	}
 
