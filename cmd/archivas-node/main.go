@@ -155,7 +155,7 @@ func main() {
 		genesisChallenge = consensus.GenerateGenesisChallenge()
 		genesisBlock := Block{
 			Height:        0,
-			TimestampUnix: time.Now().Unix(),
+			TimestampUnix: gen.Timestamp, // Use FIXED timestamp from genesis.json!
 			PrevHash:      [32]byte{},
 			Txs:           nil,
 			Proof:         nil,
