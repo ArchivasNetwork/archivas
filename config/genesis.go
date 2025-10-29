@@ -20,8 +20,8 @@ type GenesisDoc struct {
 	ChainID     uint64         `json:"chainID"`
 	Denom       string         `json:"denom"`
 	Decimals    uint8          `json:"decimals"`
-	Timestamp   int64          `json:"timestamp"`   // fixed unix timestamp
-	Seed        string         `json:"seed"`        // network seed
+	Timestamp   int64          `json:"timestamp"` // fixed unix timestamp
+	Seed        string         `json:"seed"`      // network seed
 	Allocations []GenesisAlloc `json:"allocations"`
 }
 
@@ -80,4 +80,3 @@ func GenesisAllocToMap(allocs []GenesisAlloc) map[string]int64 {
 	}
 	return result
 }
-

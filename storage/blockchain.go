@@ -14,6 +14,8 @@ var (
 	KeyVDFSeed       = []byte("meta:vdf_seed")
 	KeyVDFIterations = []byte("meta:vdf_iterations")
 	KeyVDFOutput     = []byte("meta:vdf_output")
+	KeyGenesisHash   = []byte("meta:genesis_hash")
+	KeyNetworkID     = []byte("meta:network_id")
 )
 
 // BlockStorage handles block persistence
@@ -153,19 +155,53 @@ func (ms *MetadataStorage) LoadVDFState() (seed []byte, iterations uint64, outpu
 	if err != nil {
 		return nil, 0, nil, err
 	}
-
+	
 	iterData, err := ms.db.Get(KeyVDFIterations)
 	if err != nil {
 		return nil, 0, nil, err
 	}
 	iterations = binary.BigEndian.Uint64(iterData)
-
+	
 	output, err = ms.db.Get(KeyVDFOutput)
 	if err != nil {
 		return nil, 0, nil, err
 	}
-
+	
 	return seed, iterations, output, nil
+}
+
+// SaveGenesisHash saves the genesis hash
+func (ms *MetadataStorage) SaveGenesisHash(hash [32]byte) error {
+	return ms.db.Put(KeyGenesisHash, hash[:])
+}
+
+// LoadGenesisHash loads the genesis hash
+func (ms *MetadataStorage) LoadGenesisHash() ([32]byte, error) {
+	data, err := ms.db.Get(KeyGenesisHash)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	
+	var hash [32]byte
+	if len(data) != 32 {
+		return [32]byte{}, fmt.Errorf("invalid genesis hash length")
+	}
+	copy(hash[:], data)
+	return hash, nil
+}
+
+// SaveNetworkID saves the network ID
+func (ms *MetadataStorage) SaveNetworkID(networkID string) error {
+	return ms.db.Put(KeyNetworkID, []byte(networkID))
+}
+
+// LoadNetworkID loads the network ID
+func (ms *MetadataStorage) LoadNetworkID() (string, error) {
+	data, err := ms.db.Get(KeyNetworkID)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
 }
 
 // Helper functions to create keys
