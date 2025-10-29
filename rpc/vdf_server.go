@@ -15,7 +15,7 @@ type VDFNodeState interface {
 	AcceptBlock(proof *pospace.Proof, farmerAddr string, farmerPubKey []byte,
 		vdfSeed []byte, vdfIterations uint64, vdfOutput []byte) error
 	GetCurrentChallengeVDF() ([32]byte, uint64, uint64, []byte, uint64, []byte)
-	GetChainTip() ([32]byte, uint64)
+	GetChainTip() ([32]byte, uint64, uint64)
 	UpdateVDF(seed []byte, iterations uint64, output []byte) error
 }
 
@@ -53,18 +53,7 @@ func (s *VDFServer) Start(addr string) error {
 	return http.ListenAndServe(addr, nil)
 }
 
-// ChainTipResponse represents the current chain tip
-type ChainTipResponse struct {
-	BlockHash [32]byte `json:"blockHash"`
-	Height    uint64   `json:"height"`
-}
-
-// VDFUpdateRequest represents a VDF update from timelord
-type VDFUpdateRequest struct {
-	Seed       []byte `json:"seed"`
-	Iterations uint64 `json:"iterations"`
-	Output     []byte `json:"output"`
-}
+// Types moved to rpc/types.go to avoid duplication
 
 // ChallengeVDFResponse represents the challenge info with VDF for farmers
 type ChallengeVDFResponse struct {
@@ -93,11 +82,12 @@ func (s *VDFServer) handleChainTip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	blockHash, height := s.nodeState.GetChainTip()
+	blockHash, height, difficulty := s.nodeState.GetChainTip()
 
 	response := ChainTipResponse{
-		BlockHash: blockHash,
-		Height:    height,
+		BlockHash:  blockHash,
+		Height:     height,
+		Difficulty: difficulty,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

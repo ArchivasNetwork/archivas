@@ -53,19 +53,7 @@ func (s *FarmingServer) Start(addr string) error {
 	return http.ListenAndServe(addr, nil)
 }
 
-// ChallengeResponse represents the challenge info for farmers
-type ChallengeResponse struct {
-	Challenge  [32]byte `json:"challenge"`
-	Difficulty uint64   `json:"difficulty"`
-	Height     uint64   `json:"height"`
-}
-
-// BlockSubmission represents a block submission from a farmer
-type BlockSubmission struct {
-	Proof        *pospace.Proof `json:"proof"`
-	FarmerAddr   string         `json:"farmerAddr"`
-	FarmerPubKey string         `json:"farmerPubKey"` // hex encoded
-}
+// Types moved to rpc/types.go to avoid duplication
 
 // handleGetChallenge handles GET /challenge
 func (s *FarmingServer) handleGetChallenge(w http.ResponseWriter, r *http.Request) {
@@ -93,7 +81,13 @@ func (s *FarmingServer) handleSubmitBlock(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	var submission BlockSubmission
+	// Decode directly to pospace.Proof to avoid interface{} issues
+	var submission struct {
+		Proof        *pospace.Proof `json:"proof"`
+		FarmerAddr   string         `json:"farmerAddr"`
+		FarmerPubKey string         `json:"farmerPubKey"`
+	}
+	
 	if err := json.NewDecoder(r.Body).Decode(&submission); err != nil {
 		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
 		return
@@ -158,13 +152,6 @@ func (s *FarmingServer) handleRoot(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `{"status":"ok","message":"Archivas Devnet RPC Server (Farming Enabled)"}`)
 }
 
-// ChainTipResponse represents the current chain tip
-type ChainTipResponse struct {
-	Height     uint64   `json:"height"`
-	Hash       string   `json:"hash"` // hex-encoded
-	Difficulty uint64   `json:"difficulty"`
-}
-
 // handleChainTip handles GET /chainTip (for timelord)
 func (s *FarmingServer) handleChainTip(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -175,20 +162,13 @@ func (s *FarmingServer) handleChainTip(w http.ResponseWriter, r *http.Request) {
 	height, difficulty, tipHash := s.nodeState.GetStatus()
 
 	response := ChainTipResponse{
+		BlockHash:  tipHash,
 		Height:     height,
-		Hash:       hex.EncodeToString(tipHash[:]),
 		Difficulty: difficulty,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
-}
-
-// VDFUpdateRequest represents a VDF update from timelord
-type VDFUpdateRequest struct {
-	Seed       []byte `json:"seed"`
-	Iterations uint64 `json:"iterations"`
-	Output     []byte `json:"output"`
 }
 
 // handleVDFUpdate handles POST /vdf/update (for timelord)
@@ -206,8 +186,17 @@ func (s *FarmingServer) handleVDFUpdate(w http.ResponseWriter, r *http.Request) 
 
 	// For now, just log the update (node in PoSpace-only mode doesn't enforce VDF)
 	// In VDF mode, this would update the node's VDF state
+	seedPreview := update.Seed
+	if len(seedPreview) > 8 {
+		seedPreview = seedPreview[:8]
+	}
+	outputPreview := update.Output
+	if len(outputPreview) > 8 {
+		outputPreview = outputPreview[:8]
+	}
+	
 	log.Printf("[vdf] Received VDF update: iter=%d seed=%x output=%x", 
-		update.Iterations, update.Seed[:min(8, len(update.Seed))], update.Output[:min(8, len(update.Output))])
+		update.Iterations, seedPreview, outputPreview)
 
 	response := SubmitTxResponse{
 		Status:  "success",
@@ -216,12 +205,5 @@ func (s *FarmingServer) handleVDFUpdate(w http.ResponseWriter, r *http.Request) 
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 

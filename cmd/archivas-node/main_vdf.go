@@ -329,16 +329,16 @@ func (ns *NodeStateVDF) UpdateVDF(seed []byte, iterations uint64, output []byte)
 }
 
 // GetChainTip returns current chain tip
-func (ns *NodeStateVDF) GetChainTip() ([32]byte, uint64) {
+func (ns *NodeStateVDF) GetChainTip() ([32]byte, uint64, uint64) {
 	ns.RLock()
 	defer ns.RUnlock()
-
+	
 	if len(ns.Chain) == 0 {
-		return [32]byte{}, 0
+		return [32]byte{}, 0, ns.Consensus.DifficultyTarget
 	}
-
+	
 	tip := ns.Chain[len(ns.Chain)-1]
-	return hashBlockVDF(&tip), tip.Height
+	return hashBlockVDF(&tip), tip.Height, ns.Consensus.DifficultyTarget
 }
 
 // GetCurrentChallenge returns the current challenge and difficulty for farmers
