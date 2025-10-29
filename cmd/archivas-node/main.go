@@ -121,18 +121,33 @@ func main() {
 	var chain []Block
 	var currentHeight uint64
 	var genesisChallenge [32]byte
+	var genesisHash [32]byte
 
 	tipHeight, err := metaStore.LoadTipHeight()
 	freshStart := err != nil
 
 	if freshStart {
-		// Fresh start - create genesis
-		log.Println("[DEBUG] No existing state found, creating genesis...")
-		worldState = ledger.NewWorldState(config.GenesisAlloc)
-		fmt.Printf("🌱 Fresh start: Genesis block\n")
-		fmt.Printf("🌍 World state initialized with %d genesis accounts\n", len(config.GenesisAlloc))
-		for addr, balance := range config.GenesisAlloc {
-			fmt.Printf("   %s: %.8f %s\n", addr, float64(balance)/100000000.0, config.DenomSymbol)
+		// Fresh start - require genesis file
+		if *genesisPath == "" {
+			log.Fatal("--genesis required for first start (e.g., --genesis genesis/devnet.genesis.json)")
+		}
+		
+		log.Printf("[genesis] Loading genesis from %s", *genesisPath)
+		gen, err := config.LoadGenesis(*genesisPath)
+		if err != nil {
+			log.Fatalf("Failed to load genesis: %v", err)
+		}
+		
+		genesisHash = config.HashGenesis(gen)
+		genesisAllocs := config.GenesisAllocToMap(gen.Allocations)
+		
+		worldState = ledger.NewWorldState(genesisAllocs)
+		fmt.Printf("🌱 Fresh start from genesis file\n")
+		fmt.Printf("   Genesis Hash: %x\n", genesisHash[:8])
+		fmt.Printf("   Network ID: %s\n", *networkID)
+		fmt.Printf("🌍 World state initialized with %d genesis accounts\n", len(gen.Allocations))
+		for _, alloc := range gen.Allocations {
+			fmt.Printf("   %s: %.8f %s\n", alloc.Address, float64(alloc.Amount)/100000000.0, config.DenomSymbol)
 		}
 
 		cs = consensus.NewConsensus()
@@ -153,7 +168,7 @@ func main() {
 		if err := blockStore.SaveBlock(0, genesisBlock); err != nil {
 			log.Fatalf("Failed to save genesis block: %v", err)
 		}
-		for addr, balance := range config.GenesisAlloc {
+		for addr, balance := range genesisAllocs {
 			if err := stateStore.SaveAccount(addr, balance, 0); err != nil {
 				log.Fatalf("Failed to save genesis account: %v", err)
 			}
@@ -163,6 +178,12 @@ func main() {
 		}
 		if err := metaStore.SaveDifficulty(cs.DifficultyTarget); err != nil {
 			log.Fatalf("Failed to save difficulty: %v", err)
+		}
+		if err := metaStore.SaveGenesisHash(genesisHash); err != nil {
+			log.Fatalf("Failed to save genesis hash: %v", err)
+		}
+		if err := metaStore.SaveNetworkID(*networkID); err != nil {
+			log.Fatalf("Failed to save network ID: %v", err)
 		}
 
 		fmt.Printf("📦 Genesis block created at height %d\n", genesisBlock.Height)
@@ -193,10 +214,25 @@ func main() {
 			Accounts: make(map[string]*ledger.AccountState),
 		}
 
+		// Load genesis hash and network ID
+		savedGenesisHash, err := metaStore.LoadGenesisHash()
+		if err != nil {
+			log.Fatalf("Failed to load genesis hash: %v", err)
+		}
+		genesisHash = savedGenesisHash
+		
+		savedNetworkID, err := metaStore.LoadNetworkID()
+		if err != nil {
+			log.Printf("[warning] Network ID not found in DB, using default")
+			savedNetworkID = "archivas-devnet-v1"
+		}
+		fmt.Printf("   Genesis Hash: %x\n", genesisHash[:8])
+		fmt.Printf("   Network ID: %s\n", savedNetworkID)
+		
 		// Load all accounts - we'll need to scan all keys with acc: prefix
 		// For now, just load genesis accounts and any that received funds
 		// (In production, you'd have an account index)
-		for addr := range config.GenesisAlloc {
+		for addr := range config.LegacyGenesisAlloc {
 			balance, nonce, exists, err := stateStore.LoadAccount(addr)
 			if err != nil {
 				log.Fatalf("Failed to load account %s: %v", addr, err)
@@ -271,6 +307,8 @@ func main() {
 		BlockStore:       blockStore,
 		StateStore:       stateStore,
 		MetaStore:        metaStore,
+		GenesisHash:      genesisHash,
+		NetworkID:        *networkID,
 	}
 
 	log.Println("[DEBUG] Initialized chain memory")
@@ -288,20 +326,28 @@ func main() {
 		nodeState.P2P = p2pNet
 		fmt.Printf("🌐 P2P network started on %s\n", *p2pAddr)
 
-		// Connect to initial peers
+		// Connect to initial peers and bootnodes
+		allPeers := []string{}
 		if *peerAddrs != "" {
-			peers := strings.Split(*peerAddrs, ",")
-			for _, peer := range peers {
+			allPeers = append(allPeers, strings.Split(*peerAddrs, ",")...)
+		}
+		if *bootnodes != "" {
+			allPeers = append(allPeers, strings.Split(*bootnodes, ",")...)
+		}
+		
+		if len(allPeers) > 0 {
+			for _, peer := range allPeers {
 				peer = strings.TrimSpace(peer)
 				if peer != "" {
 					go func(addr string) {
+						time.Sleep(500 * time.Millisecond) // Stagger connections
 						if err := p2pNet.ConnectPeer(addr); err != nil {
 							log.Printf("[p2p] Failed to connect to peer %s: %v", addr, err)
 						}
 					}(peer)
 				}
 			}
-			fmt.Printf("📡 Connecting to %d peer(s)...\n", len(peers))
+			fmt.Printf("📡 Connecting to %d peer(s)/bootnode(s)...\n", len(allPeers))
 		}
 		fmt.Println()
 	}

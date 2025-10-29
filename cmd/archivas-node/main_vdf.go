@@ -71,10 +71,10 @@ func mainVDF() {
 
 	// Initialize world state with genesis balances
 	log.Println("[DEBUG] Initializing world state...")
-	worldState := ledger.NewWorldState(config.GenesisAlloc)
+	worldState := ledger.NewWorldState(config.LegacyGenesisAlloc)
 	log.Println("[DEBUG] Loaded world state")
-	fmt.Printf("🌍 World state initialized with %d genesis accounts\n", len(config.GenesisAlloc))
-	for addr, balance := range config.GenesisAlloc {
+	fmt.Printf("🌍 World state initialized with %d genesis accounts\n", len(config.LegacyGenesisAlloc))
+	for addr, balance := range config.LegacyGenesisAlloc {
 		fmt.Printf("   %s: %.8f %s\n", addr, float64(balance)/100000000.0, config.DenomSymbol)
 	}
 	fmt.Println()
