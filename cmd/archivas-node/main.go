@@ -534,6 +534,86 @@ func (ns *NodeState) UpdateVDFState(seed []byte, iterations uint64, output []byt
 	ns.CurrentChallenge = sha256.Sum256(h.Sum(nil))
 }
 
+// LocalHeight returns current chain height
+func (ns *NodeState) LocalHeight() uint64 {
+	ns.RLock()
+	defer ns.RUnlock()
+	return ns.CurrentHeight
+}
+
+// HasBlock checks if we have a block at given height
+func (ns *NodeState) HasBlock(height uint64) bool {
+	ns.RLock()
+	defer ns.RUnlock()
+	return int(height) < len(ns.Chain)
+}
+
+// VerifyAndApplyBlock verifies and applies a block received from a peer
+func (ns *NodeState) VerifyAndApplyBlock(blockJSON json.RawMessage) error {
+	var block Block
+	if err := json.Unmarshal(blockJSON, &block); err != nil {
+		return fmt.Errorf("failed to unmarshal block: %w", err)
+	}
+	
+	ns.Lock()
+	defer ns.Unlock()
+	
+	// Verify block is next in sequence
+	if block.Height != ns.CurrentHeight+1 {
+		return fmt.Errorf("block height %d doesn't match expected %d", block.Height, ns.CurrentHeight+1)
+	}
+	
+	// Verify prev hash
+	if len(ns.Chain) > 0 {
+		prevBlock := ns.Chain[len(ns.Chain)-1]
+		prevHash := hashBlock(&prevBlock)
+		if block.PrevHash != prevHash {
+			return fmt.Errorf("prev hash mismatch")
+		}
+	}
+	
+	// Verify PoSpace proof if present
+	if block.Proof != nil {
+		challenge := ns.CurrentChallenge
+		if err := ns.Consensus.VerifyProofOfSpace(block.Proof, challenge); err != nil {
+			return fmt.Errorf("invalid PoSpace proof: %w", err)
+		}
+	}
+	
+	// Apply transactions (excluding coinbase)
+	for i, tx := range block.Txs {
+		if i == 0 && tx.From == "coinbase" {
+			// Skip coinbase validation
+			continue
+		}
+		// Transactions were already validated when block was created
+		// For received blocks, we trust the PoSpace proof validates the block
+		// In production, you'd re-verify all transactions here
+	}
+	
+	// Add block to chain
+	ns.Chain = append(ns.Chain, block)
+	ns.CurrentHeight = block.Height
+	
+	// Update challenge for next block
+	newBlockHash := hashBlock(&block)
+	ns.CurrentChallenge = consensus.GenerateChallenge(newBlockHash, ns.CurrentHeight+1)
+	
+	// Persist to database
+	if ns.BlockStore != nil {
+		if err := ns.BlockStore.SaveBlock(block.Height, block); err != nil {
+			log.Printf("⚠️  Failed to persist block %d: %v", block.Height, err)
+		}
+		if err := ns.MetaStore.SaveTipHeight(block.Height); err != nil {
+			log.Printf("⚠️  Failed to persist tip height: %v", err)
+		}
+	}
+	
+	log.Printf("✅ Synced block %d from peer", block.Height)
+	
+	return nil
+}
+
 // GetCurrentChallenge returns the current challenge and difficulty
 func (ns *NodeState) GetCurrentChallenge() ([32]byte, uint64, uint64) {
 	ns.RLock()

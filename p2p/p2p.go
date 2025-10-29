@@ -28,6 +28,7 @@ type Network struct {
 	listener    net.Listener
 	nodeHandler NodeHandler
 	listenAddr  string
+	syncState   *SyncState
 }
 
 // NodeHandler interface for node callbacks
@@ -35,6 +36,10 @@ type NodeHandler interface {
 	OnNewBlock(height uint64, hash [32]byte, fromPeer string)
 	OnBlockRequest(height uint64) (interface{}, error)
 	GetStatus() (height uint64, difficulty uint64, tipHash [32]byte)
+	// Block importing
+	LocalHeight() uint64
+	HasBlock(height uint64) bool
+	VerifyAndApplyBlock(blockJSON json.RawMessage) error
 }
 
 // NewNetwork creates a new P2P network
@@ -43,6 +48,7 @@ func NewNetwork(listenAddr string, handler NodeHandler) *Network {
 		peers:       make(map[string]*Peer),
 		nodeHandler: handler,
 		listenAddr:  listenAddr,
+		syncState:   NewSyncState(),
 	}
 }
 
@@ -299,8 +305,55 @@ func (n *Network) handleBlockData(peer *Peer, payload json.RawMessage) {
 	}
 
 	log.Printf("[p2p] received BLOCK_DATA height=%d from %s", blockData.Height, peer.Address)
-
-	// TODO: Store this block (will be handled by sync logic)
+	
+	// Try to apply the block
+	if err := n.nodeHandler.VerifyAndApplyBlock(blockData.BlockJSON); err != nil {
+		log.Printf("[p2p] failed to apply block %d: %v", blockData.Height, err)
+		
+		// If block is out of order, queue it and request missing blocks
+		localHeight := n.nodeHandler.LocalHeight()
+		if blockData.Height > localHeight+1 {
+			log.Printf("[p2p] block %d is ahead of us (height=%d), requesting gap blocks", blockData.Height, localHeight)
+			
+			// Request missing blocks
+			for h := localHeight + 1; h < blockData.Height; h++ {
+				if !n.nodeHandler.HasBlock(h) && n.syncState.WantBlock(h) {
+					req := GetBlockMessage{Height: h}
+					n.SendMessage(peer, MsgTypeGetBlock, req)
+				}
+			}
+			
+			// Queue this block for later
+			n.syncState.QueueBlock(blockData.Height, blockData.BlockJSON)
+		}
+		return
+	}
+	
+	n.syncState.GotBlock(blockData.Height)
+	
+	// Try to apply any queued blocks that are now sequential
+	for {
+		nextHeight := n.nodeHandler.LocalHeight() + 1
+		if queuedData, ok := n.syncState.GetQueuedBlock(nextHeight); ok {
+			if err := n.nodeHandler.VerifyAndApplyBlock(queuedData); err != nil {
+				log.Printf("[p2p] failed to apply queued block %d: %v", nextHeight, err)
+				break
+			}
+			log.Printf("[p2p] ✅ Applied queued block %d", nextHeight)
+		} else {
+			break
+		}
+	}
+	
+	// If peer is still ahead, request next block
+	localHeight := n.nodeHandler.LocalHeight()
+	if peer.Height > localHeight {
+		nextHeight := localHeight + 1
+		if n.syncState.WantBlock(nextHeight) {
+			req := GetBlockMessage{Height: nextHeight}
+			n.SendMessage(peer, MsgTypeGetBlock, req)
+		}
+	}
 }
 
 func (n *Network) handleGetStatus(peer *Peer, payload json.RawMessage) {
