@@ -1,0 +1,15 @@
+{
+  "chainName": "Archivas Devnet",
+  "chainID": 1616,
+  "denom": "RCHV",
+  "decimals": 8,
+  "timestamp": 1730246400,
+  "seed": "archivas-devnet-v1-2025-10-29",
+  "allocations": [
+    {
+      "address": "arcv1zramsn568zt3cwc8ny995u3dhpz5rpuamx2jz7",
+      "amount": 100000000000000000
+    }
+  ]
+}
+
