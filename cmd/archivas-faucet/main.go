@@ -23,11 +23,11 @@ const (
 )
 
 type Faucet struct {
-	nodeURL    string
-	privKey    []byte
-	address    string
-	lastDrips  map[string]time.Time
-	mu         sync.Mutex
+	nodeURL   string
+	privKey   []byte
+	address   string
+	lastDrips map[string]time.Time
+	mu        sync.Mutex
 }
 
 func main() {
@@ -281,4 +281,3 @@ func (f *Faucet) submitTx(tx *ledger.Transaction) error {
 
 	return nil
 }
-

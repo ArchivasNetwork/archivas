@@ -6,11 +6,9 @@ import (
 	"flag"
 	"fmt"
 	"html/template"
-	"io"
 	"log"
 	"net/http"
 	"strconv"
-	"time"
 )
 
 type Explorer struct {
@@ -24,12 +22,12 @@ type ChainInfo struct {
 }
 
 type BlockInfo struct {
-	Height        uint64
-	Hash          string
-	Difficulty    uint64
-	Timestamp     int64
-	FarmerAddr    string
-	Transactions  int
+	Height       uint64
+	Hash         string
+	Difficulty   uint64
+	Timestamp    int64
+	FarmerAddr   string
+	Transactions int
 }
 
 func main() {
@@ -129,7 +127,7 @@ func (e *Explorer) handleBlock(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("height") != "" {
 		heightStr = r.URL.Query().Get("height")
 	}
-	
+
 	height, err := strconv.ParseUint(heightStr, 10, 64)
 	if err != nil {
 		http.Error(w, "Invalid block height", http.StatusBadRequest)
@@ -263,4 +261,3 @@ func (e *Explorer) getBalance(address string) (int64, uint64, error) {
 
 	return result.Balance, result.Nonce, nil
 }
-

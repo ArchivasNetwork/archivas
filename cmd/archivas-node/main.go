@@ -3,14 +3,10 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/binary"
-	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -30,11 +26,11 @@ type Block struct {
 	Height        uint64
 	TimestampUnix int64
 	PrevHash      [32]byte
-	Difficulty    uint64                 // Difficulty target when mined
-	Challenge     [32]byte               // The challenge used to win this block
+	Difficulty    uint64   // Difficulty target when mined
+	Challenge     [32]byte // The challenge used to win this block
 	Txs           []ledger.Transaction
-	Proof         *pospace.Proof         // Proof-of-Space
-	FarmerAddr    string                 // Address to receive block reward
+	Proof         *pospace.Proof // Proof-of-Space
+	FarmerAddr    string         // Address to receive block reward
 }
 
 // NodeState holds the entire node state
@@ -137,16 +133,16 @@ func main() {
 		if *genesisPath == "" {
 			log.Fatal("--genesis required for first start (e.g., --genesis genesis/devnet.genesis.json)")
 		}
-		
+
 		log.Printf("[genesis] Loading genesis from %s", *genesisPath)
 		gen, err := config.LoadGenesis(*genesisPath)
 		if err != nil {
 			log.Fatalf("Failed to load genesis: %v", err)
 		}
-		
+
 		genesisHash = config.HashGenesis(gen)
 		genesisAllocs := config.GenesisAllocToMap(gen.Allocations)
-		
+
 		worldState = ledger.NewWorldState(genesisAllocs)
 		fmt.Printf("🌱 Fresh start from genesis file\n")
 		fmt.Printf("   Genesis Hash: %x\n", genesisHash[:8])
@@ -228,7 +224,7 @@ func main() {
 			log.Fatalf("Failed to load genesis hash: %v", err)
 		}
 		genesisHash = savedGenesisHash
-		
+
 		savedNetworkID, err := metaStore.LoadNetworkID()
 		if err != nil {
 			log.Printf("[warning] Network ID not found in DB, using default")
@@ -236,7 +232,7 @@ func main() {
 		}
 		fmt.Printf("   Genesis Hash: %x\n", genesisHash[:8])
 		fmt.Printf("   Network ID: %s\n", savedNetworkID)
-		
+
 		// Load all accounts - we'll need to scan all keys with acc: prefix
 		// For now, just load genesis accounts and any that received funds
 		// (In production, you'd have an account index)
@@ -342,7 +338,7 @@ func main() {
 		if *bootnodes != "" {
 			allPeers = append(allPeers, strings.Split(*bootnodes, ",")...)
 		}
-		
+
 		if len(allPeers) > 0 {
 			for _, peer := range allPeers {
 				peer = strings.TrimSpace(peer)
@@ -562,11 +558,11 @@ func (ns *NodeState) OnBlockRequest(height uint64) (interface{}, error) {
 func (ns *NodeState) GetStatus() (uint64, uint64, [32]byte) {
 	ns.RLock()
 	defer ns.RUnlock()
-	
+
 	if len(ns.Chain) == 0 {
 		return 0, ns.Consensus.DifficultyTarget, [32]byte{}
 	}
-	
+
 	tipBlock := ns.Chain[len(ns.Chain)-1]
 	tipHash := hashBlock(&tipBlock)
 	return ns.CurrentHeight, ns.Consensus.DifficultyTarget, tipHash
@@ -587,7 +583,7 @@ func (ns *NodeState) UpdateVDFState(seed []byte, iterations uint64, output []byt
 	ns.VDFIterations = iterations
 	ns.VDFOutput = output
 	ns.HasVDF = true
-	
+
 	// CRITICAL: Update challenge based on new VDF output!
 	// Challenge should be H(VDF_output || height)
 	h := sha256.New()
@@ -631,15 +627,15 @@ func (ns *NodeState) VerifyAndApplyBlock(blockJSON json.RawMessage) error {
 	if err := json.Unmarshal(blockJSON, &block); err != nil {
 		return fmt.Errorf("failed to unmarshal block: %w", err)
 	}
-	
+
 	ns.Lock()
 	defer ns.Unlock()
-	
+
 	// Verify block is next in sequence
 	if block.Height != ns.CurrentHeight+1 {
 		return fmt.Errorf("block height %d doesn't match expected %d", block.Height, ns.CurrentHeight+1)
 	}
-	
+
 	// Verify prev hash
 	if len(ns.Chain) > 0 {
 		prevBlock := ns.Chain[len(ns.Chain)-1]
@@ -648,11 +644,11 @@ func (ns *NodeState) VerifyAndApplyBlock(blockJSON json.RawMessage) error {
 			return fmt.Errorf("prev hash mismatch")
 		}
 	}
-	
+
 	// Verify difficulty matches expected (recompute from chain history)
 	// For now, trust the block's difficulty (production would recompute)
 	// TODO: Add RecomputeDifficulty(prev, params) and verify match
-	
+
 	// Verify PoSpace proof using block's own difficulty and challenge!
 	if block.Proof != nil {
 		// Create temporary consensus with block's difficulty for verification
@@ -661,7 +657,7 @@ func (ns *NodeState) VerifyAndApplyBlock(blockJSON json.RawMessage) error {
 			return fmt.Errorf("invalid PoSpace proof: %w", err)
 		}
 	}
-	
+
 	// Apply transactions (excluding coinbase)
 	for i, tx := range block.Txs {
 		if i == 0 && tx.From == "coinbase" {
@@ -672,15 +668,15 @@ func (ns *NodeState) VerifyAndApplyBlock(blockJSON json.RawMessage) error {
 		// For received blocks, we trust the PoSpace proof validates the block
 		// In production, you'd re-verify all transactions here
 	}
-	
+
 	// Add block to chain
 	ns.Chain = append(ns.Chain, block)
 	ns.CurrentHeight = block.Height
-	
+
 	// Update challenge for next block
 	newBlockHash := hashBlock(&block)
 	ns.CurrentChallenge = consensus.GenerateChallenge(newBlockHash, ns.CurrentHeight+1)
-	
+
 	// Persist to database
 	if ns.BlockStore != nil {
 		if err := ns.BlockStore.SaveBlock(block.Height, block); err != nil {
@@ -690,9 +686,9 @@ func (ns *NodeState) VerifyAndApplyBlock(blockJSON json.RawMessage) error {
 			log.Printf("⚠️  Failed to persist tip height: %v", err)
 		}
 	}
-	
+
 	log.Printf("✅ Synced block %d from peer", block.Height)
-	
+
 	return nil
 }
 
@@ -710,88 +706,10 @@ func hashBlock(b *Block) [32]byte {
 	fmt.Fprintf(h, "%d", b.Height)
 	fmt.Fprintf(h, "%d", b.TimestampUnix)
 	h.Write(b.PrevHash[:])
-	fmt.Fprintf(h, "%d", b.Difficulty)  // Include difficulty
-	h.Write(b.Challenge[:])              // Include challenge
+	fmt.Fprintf(h, "%d", b.Difficulty) // Include difficulty
+	h.Write(b.Challenge[:])            // Include challenge
 	if b.Proof != nil {
 		h.Write(b.Proof.Hash[:])
 	}
 	return sha256.Sum256(h.Sum(nil))
-}
-
-// CLI subcommands
-
-func printUsage() {
-	fmt.Println("Archivas Node")
-	fmt.Println()
-	fmt.Println("Usage:")
-	fmt.Println("  archivas-node                Run node (default)")
-	fmt.Println("  archivas-node peers          List connected peers")
-	fmt.Println("  archivas-node status         Show chain status")
-	fmt.Println()
-	fmt.Println("Flags:")
-	fmt.Println("  --rpc :8080                  RPC listen address")
-	fmt.Println("  --p2p :9090                  P2P listen address")
-	fmt.Println("  --db ./data                  Database path")
-	fmt.Println("  --genesis <path>             Genesis file")
-	fmt.Println("  --network-id <id>            Network ID")
-	fmt.Println("  --bootnodes <addrs>          Bootstrap nodes")
-}
-
-func cmdPeers() {
-	nodeURL := "http://localhost:8080"
-	if len(os.Args) > 2 {
-		nodeURL = os.Args[2]
-	}
-
-	resp, err := http.Get(nodeURL + "/healthz")
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
-	}
-	defer resp.Body.Close()
-
-	var health struct {
-		Height uint64 \`json:"height"\`
-		Peers  int    \`json:"peers"\`
-	}
-
-	json.NewDecoder(resp.Body).Decode(&health)
-
-	fmt.Printf("Connected Peers: %d\n", health.Peers)
-	fmt.Printf("Chain Height: %d\n", health.Height)
-}
-
-func cmdStatus() {
-	nodeURL := "http://localhost:8080"
-	if len(os.Args) > 2 {
-		nodeURL = os.Args[2]
-	}
-
-	// Get chain tip
-	resp, _ := http.Get(nodeURL + "/chainTip")
-	if resp != nil {
-		defer resp.Body.Close()
-		var tip struct {
-			Height     uint64 \`json:"height"\`
-			BlockHash  []byte \`json:"blockHash"\`
-			Difficulty uint64 \`json:"difficulty"\`
-		}
-		json.NewDecoder(resp.Body).Decode(&tip)
-		
-		fmt.Println("Chain Status:")
-		fmt.Printf("  Height: %d\n", tip.Height)
-		fmt.Printf("  Hash: %x\n", tip.BlockHash[:8])
-		fmt.Printf("  Difficulty: %d\n", tip.Difficulty)
-	}
-
-	// Get health
-	resp2, _ := http.Get(nodeURL + "/healthz")
-	if resp2 != nil {
-		defer resp2.Body.Close()
-		var health struct {
-			Peers int \`json:"peers"\`
-		}
-		json.NewDecoder(resp2.Body).Decode(&health)
-		fmt.Printf("  Peers: %d\n", health.Peers)
-	}
 }
