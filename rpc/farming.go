@@ -562,8 +562,8 @@ func (s *FarmingServer) handleVersion(w http.ResponseWriter, r *http.Request) {
 		Network   string `json:"network"`
 		Consensus string `json:"consensus"`
 	}{
-		Version:   "v0.5.0-alpha",
-		Commit:    "dev", // Would be replaced with git commit hash in production
+		Version:   "v0.6.0-alpha",
+		Commit:    "b0e5d85",
 		Network:   "archivas-devnet-v3",
 		Consensus: "Proof-of-Space-and-Time",
 	}
