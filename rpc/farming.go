@@ -9,7 +9,9 @@ import (
 
 	"github.com/iljanemesis/archivas/ledger"
 	"github.com/iljanemesis/archivas/mempool"
+	"github.com/iljanemesis/archivas/metrics"
 	"github.com/iljanemesis/archivas/pospace"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // NodeState interface for farming operations
@@ -42,24 +44,35 @@ func NewFarmingServer(ws *ledger.WorldState, mp *mempool.Mempool, ns NodeState) 
 // Start starts the farming RPC server
 func (s *FarmingServer) Start(addr string) error {
 	// Original endpoints
-	http.HandleFunc("/balance/", s.handleBalance)
-	http.HandleFunc("/submitTx", s.handleSubmitTx)
-	http.HandleFunc("/", s.handleRoot)
+	http.HandleFunc("/balance/", s.wrapMetrics("/balance", s.handleBalance))
+	http.HandleFunc("/submitTx", s.wrapMetrics("/submitTx", s.handleSubmitTx))
+	http.HandleFunc("/", s.wrapMetrics("/", s.handleRoot))
 
 	// Farming endpoints
-	http.HandleFunc("/challenge", s.handleGetChallenge)
-	http.HandleFunc("/submitBlock", s.handleSubmitBlock)
+	http.HandleFunc("/challenge", s.wrapMetrics("/challenge", s.handleGetChallenge))
+	http.HandleFunc("/submitBlock", s.wrapMetrics("/submitBlock", s.handleSubmitBlock))
 	
 	// VDF/Timelord endpoints
-	http.HandleFunc("/chainTip", s.handleChainTip)
-	http.HandleFunc("/vdf/update", s.handleVDFUpdate)
+	http.HandleFunc("/chainTip", s.wrapMetrics("/chainTip", s.handleChainTip))
+	http.HandleFunc("/vdf/update", s.wrapMetrics("/vdf/update", s.handleVDFUpdate))
 	
 	// Network endpoints
-	http.HandleFunc("/genesisHash", s.handleGenesisHash)
-	http.HandleFunc("/healthz", s.handleHealthz)
-	http.HandleFunc("/peers", s.handlePeers)
+	http.HandleFunc("/genesisHash", s.wrapMetrics("/genesisHash", s.handleGenesisHash))
+	http.HandleFunc("/healthz", s.wrapMetrics("/healthz", s.handleHealthz))
+	http.HandleFunc("/peers", s.wrapMetrics("/peers", s.handlePeers))
+	
+	// Metrics endpoint
+	http.Handle("/metrics", promhttp.Handler())
 
 	return http.ListenAndServe(addr, nil)
+}
+
+// wrapMetrics wraps an HTTP handler to increment request metrics
+func (s *FarmingServer) wrapMetrics(endpoint string, handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		metrics.RPCRequests.WithLabelValues(endpoint).Inc()
+		handler(w, r)
+	}
 }
 
 // Types moved to rpc/types.go to avoid duplication

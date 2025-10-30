@@ -15,6 +15,7 @@ import (
 	"github.com/iljanemesis/archivas/consensus"
 	"github.com/iljanemesis/archivas/ledger"
 	"github.com/iljanemesis/archivas/mempool"
+	"github.com/iljanemesis/archivas/metrics"
 	"github.com/iljanemesis/archivas/p2p"
 	"github.com/iljanemesis/archivas/pospace"
 	"github.com/iljanemesis/archivas/rpc"
@@ -714,6 +715,11 @@ func (ns *NodeState) VerifyAndApplyBlock(blockJSON json.RawMessage) error {
 	// Add block to chain
 	ns.Chain = append(ns.Chain, block)
 	ns.CurrentHeight = block.Height
+	
+	// Update Prometheus metrics
+	metrics.TipHeight.Set(float64(ns.CurrentHeight))
+	metrics.BlocksTotal.Inc()
+	metrics.Difficulty.Set(float64(block.Difficulty))
 
 	// Update challenge for next block
 	newBlockHash := hashBlock(&block)
