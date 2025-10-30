@@ -34,6 +34,9 @@ type Block struct {
 	Txs           []ledger.Transaction
 	Proof         *pospace.Proof // Proof-of-Space
 	FarmerAddr    string         // Address to receive block reward
+	
+	// v0.5.0: Cumulative work for fork resolution
+	CumulativeWork uint64 // Total work from genesis to this block
 }
 
 // NodeState holds the entire node state
@@ -169,14 +172,15 @@ func main() {
 
 		genesisChallenge = consensus.GenerateGenesisChallenge()
 		genesisBlock := Block{
-			Height:        0,
-			TimestampUnix: gen.Timestamp, // Use FIXED timestamp from genesis.json!
-			PrevHash:      [32]byte{},
-			Difficulty:    1125899906842624, // 2^50 initial difficulty
-			Challenge:     genesisChallenge,
-			Txs:           nil,
-			Proof:         nil,
-			FarmerAddr:    "",
+			Height:         0,
+			TimestampUnix:  gen.Timestamp, // Use FIXED timestamp from genesis.json!
+			PrevHash:       [32]byte{},
+			Difficulty:     1125899906842624, // 2^50 initial difficulty
+			Challenge:      genesisChallenge,
+			Txs:            nil,
+			Proof:          nil,
+			FarmerAddr:     "",
+			CumulativeWork: consensus.CalculateWork(1125899906842624), // Genesis work
 		}
 		chain = []Block{genesisBlock}
 		currentHeight = 0
