@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -788,4 +789,58 @@ func hashBlock(b *Block) [32]byte {
 		h.Write(b.Proof.Hash[:])
 	}
 	return sha256.Sum256(h.Sum(nil))
+}
+
+// GetRecentBlocks returns the most recent N blocks
+func (ns *NodeState) GetRecentBlocks(count int) interface{} {
+	ns.RLock()
+	defer ns.RUnlock()
+	
+	chainLen := len(ns.Chain)
+	if count > chainLen {
+		count = chainLen
+	}
+	
+	start := chainLen - count
+	recentBlocks := make([]map[string]interface{}, 0, count)
+	
+	for i := start; i < chainLen; i++ {
+		block := ns.Chain[i]
+		blockHash := hashBlock(&block)
+		recentBlocks = append(recentBlocks, map[string]interface{}{
+			"height":     block.Height,
+			"hash":       hex.EncodeToString(blockHash[:]),
+			"timestamp":  block.TimestampUnix,
+			"difficulty": block.Difficulty,
+			"farmerAddr": block.FarmerAddr,
+			"txCount":    len(block.Txs),
+		})
+	}
+	
+	return recentBlocks
+}
+
+// GetBlockByHeight returns a specific block by height
+func (ns *NodeState) GetBlockByHeight(height uint64) (interface{}, error) {
+	ns.RLock()
+	defer ns.RUnlock()
+	
+	if int(height) >= len(ns.Chain) {
+		return nil, fmt.Errorf("block %d not found (tip: %d)", height, len(ns.Chain)-1)
+	}
+	
+	block := ns.Chain[height]
+	blockHash := hashBlock(&block)
+	
+	return map[string]interface{}{
+		"height":     block.Height,
+		"hash":       hex.EncodeToString(blockHash[:]),
+		"prevHash":   hex.EncodeToString(block.PrevHash[:]),
+		"timestamp":  block.TimestampUnix,
+		"difficulty": block.Difficulty,
+		"challenge":  hex.EncodeToString(block.Challenge[:]),
+		"farmerAddr": block.FarmerAddr,
+		"txCount":    len(block.Txs),
+		"txs":        block.Txs,
+	}, nil
 }
