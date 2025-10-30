@@ -23,6 +23,7 @@ type NodeState interface {
 	GetGenesisHash() [32]byte
 	GetPeerCount() int
 	GetPeerList() (connected []string, known []string)
+	GetHealthStats() interface{}
 }
 
 // FarmingServer extends Server with farming capabilities
@@ -60,6 +61,7 @@ func (s *FarmingServer) Start(addr string) error {
 	http.HandleFunc("/genesisHash", s.wrapMetrics("/genesisHash", s.handleGenesisHash))
 	http.HandleFunc("/healthz", s.wrapMetrics("/healthz", s.handleHealthz))
 	http.HandleFunc("/peers", s.wrapMetrics("/peers", s.handlePeers))
+	http.HandleFunc("/health", s.wrapMetrics("/health", s.handleHealthDetailed))
 	
 	// Metrics endpoint
 	http.Handle("/metrics", promhttp.Handler())
@@ -304,6 +306,35 @@ func (s *FarmingServer) handlePeers(w http.ResponseWriter, r *http.Request) {
 	}{
 		Connected: connected,
 		Known:     known,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleHealthDetailed handles GET /health (detailed chain health)
+func (s *FarmingServer) handleHealthDetailed(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	height, difficulty, _ := s.nodeState.GetStatus()
+	peerCount := s.nodeState.GetPeerCount()
+	healthStats := s.nodeState.GetHealthStats()
+
+	response := struct {
+		OK           bool        `json:"ok"`
+		Height       uint64      `json:"height"`
+		Difficulty   uint64      `json:"difficulty"`
+		Peers        int         `json:"peers"`
+		HealthStats  interface{} `json:"healthStats"`
+	}{
+		OK:          true,
+		Height:      height,
+		Difficulty:  difficulty,
+		Peers:       peerCount,
+		HealthStats: healthStats,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

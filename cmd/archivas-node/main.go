@@ -13,6 +13,7 @@ import (
 
 	"github.com/iljanemesis/archivas/config"
 	"github.com/iljanemesis/archivas/consensus"
+	"github.com/iljanemesis/archivas/health"
 	"github.com/iljanemesis/archivas/ledger"
 	"github.com/iljanemesis/archivas/mempool"
 	"github.com/iljanemesis/archivas/metrics"
@@ -52,6 +53,8 @@ type NodeState struct {
 	P2P         *p2p.Network
 	GenesisHash [32]byte
 	NetworkID   string
+	// Health tracking
+	Health *health.ChainHealth
 	// VDF state (updated by timelord)
 	VDFSeed       []byte
 	VDFIterations uint64
@@ -320,6 +323,7 @@ func main() {
 		BlockStore:       blockStore,
 		StateStore:       stateStore,
 		MetaStore:        metaStore,
+		Health:           health.NewChainHealth(),
 		GenesisHash:      genesisHash,
 		NetworkID:        *networkID,
 	}
@@ -664,6 +668,25 @@ func (ns *NodeState) GetPeerList() (connected []string, known []string) {
 	return ns.P2P.GetPeerList()
 }
 
+// GetHealthStats returns detailed health statistics
+func (ns *NodeState) GetHealthStats() interface{} {
+	if ns.Health == nil {
+		return map[string]interface{}{"status": "not initialized"}
+	}
+	
+	stats := ns.Health.GetStats()
+	
+	return map[string]interface{}{
+		"uptime":           stats.Uptime.String(),
+		"uptimeSeconds":    int(stats.Uptime.Seconds()),
+		"totalBlocks":      stats.TotalBlocks,
+		"avgBlockTime":     stats.AverageBlockTime.String(),
+		"avgBlockSeconds":  stats.AverageBlockTime.Seconds(),
+		"blocksPerHour":    stats.BlocksPerHour,
+		"lastBlockTime":    stats.LastBlockTime.Format(time.RFC3339),
+	}
+}
+
 // VerifyAndApplyBlock verifies and applies a block received from a peer
 func (ns *NodeState) VerifyAndApplyBlock(blockJSON json.RawMessage) error {
 	var block Block
@@ -720,6 +743,11 @@ func (ns *NodeState) VerifyAndApplyBlock(blockJSON json.RawMessage) error {
 	metrics.TipHeight.Set(float64(ns.CurrentHeight))
 	metrics.BlocksTotal.Inc()
 	metrics.Difficulty.Set(float64(block.Difficulty))
+	
+	// Record block for health tracking
+	if ns.Health != nil {
+		ns.Health.RecordBlock()
+	}
 
 	// Update challenge for next block
 	newBlockHash := hashBlock(&block)
