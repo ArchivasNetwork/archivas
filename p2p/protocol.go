@@ -60,3 +60,8 @@ type StatusMessage struct {
 	Difficulty uint64   `json:"difficulty"`
 	TipHash    [32]byte `json:"tipHash"`
 }
+
+// GossipPeersMessage is sent to share known peer addresses
+type GossipPeersMessage struct {
+	Peers []string `json:"peers"`
+}
