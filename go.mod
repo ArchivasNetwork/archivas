@@ -11,6 +11,7 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/tyler-smith/go-bip39 v1.1.0
 	golang.org/x/crypto v0.41.0
+	golang.org/x/term v0.34.0
 )
 
 require (

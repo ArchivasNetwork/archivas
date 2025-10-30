@@ -107,6 +107,10 @@ func (s *FarmingServer) Start(addr string) error {
 	http.HandleFunc("/recentBlocks", s.wrapMetrics("/recentBlocks", s.handleRecentBlocks))
 	http.HandleFunc("/block/", s.wrapMetrics("/block", s.handleBlockByHeight))
 	http.HandleFunc("/version", s.wrapMetrics("/version", s.handleVersion))
+	http.HandleFunc("/account/", s.wrapMetrics("/account", s.handleAccount))
+	http.HandleFunc("/mempool", s.wrapMetrics("/mempool", s.handleMempoolView))
+	http.HandleFunc("/broadcast", s.wrapMetrics("/broadcast", s.handleBroadcast))
+	http.HandleFunc("/search", s.wrapMetrics("/search", s.handleSearch))
 	
 	// Metrics endpoint
 	http.Handle("/metrics", promhttp.Handler())
@@ -561,6 +565,154 @@ func (s *FarmingServer) handleVersion(w http.ResponseWriter, r *http.Request) {
 		Commit:    "dev", // Would be replaced with git commit hash in production
 		Network:   "archivas-devnet-v3",
 		Consensus: "Proof-of-Space-and-Time",
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleAccount handles GET /account/<addr> and /account/<addr>/txs
+func (s *FarmingServer) handleAccount(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse address from URL
+	path := r.URL.Path[len("/account/"):]
+	parts := strings.Split(path, "/")
+	address := parts[0]
+
+	// Check if requesting tx history
+	if len(parts) > 1 && parts[1] == "txs" {
+		s.handleAccountTxs(w, r, address)
+		return
+	}
+
+	// Get account info
+	balance := s.worldState.GetBalance(address)
+	nonce := s.worldState.GetNonce(address)
+
+	response := struct {
+		Address string `json:"address"`
+		Balance int64  `json:"balance"`
+		Nonce   uint64 `json:"nonce"`
+	}{
+		Address: address,
+		Balance: balance,
+		Nonce:   nonce,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleAccountTxs handles GET /account/<addr>/txs
+func (s *FarmingServer) handleAccountTxs(w http.ResponseWriter, r *http.Request, address string) {
+	// TODO: Implement tx history indexing
+	// For now, return empty list
+	response := struct {
+		Address string        `json:"address"`
+		Txs     []interface{} `json:"txs"`
+		Count   int           `json:"count"`
+	}{
+		Address: address,
+		Txs:     []interface{}{},
+		Count:   0,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleMempoolView handles GET /mempool
+func (s *FarmingServer) handleMempoolView(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	txs := s.mempool.GetAll()
+
+	response := struct {
+		Count int                    `json:"count"`
+		Txs   []ledger.Transaction   `json:"txs"`
+	}{
+		Count: len(txs),
+		Txs:   txs,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleBroadcast handles POST /broadcast
+func (s *FarmingServer) handleBroadcast(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var tx ledger.Transaction
+	if err := json.NewDecoder(r.Body).Decode(&tx); err != nil {
+		http.Error(w, "Invalid transaction", http.StatusBadRequest)
+		return
+	}
+
+	// Add to mempool
+	s.mempool.Add(tx)
+
+	response := struct {
+		Status string `json:"status"`
+		TxHash string `json:"txHash,omitempty"`
+	}{
+		Status: "accepted",
+		TxHash: "pending", // Would compute actual tx hash
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleSearch handles GET /search?q=<query>
+func (s *FarmingServer) handleSearch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	query := r.URL.Query().Get("q")
+	if query == "" {
+		http.Error(w, "Missing query parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Detect type
+	var resultType string
+	var result interface{}
+
+	if strings.HasPrefix(query, "arcv") {
+		// Address
+		resultType = "address"
+		result = map[string]string{"address": query, "redirect": "/account/" + query}
+	} else if len(query) == 64 {
+		// Likely a hash (block or tx)
+		resultType = "hash"
+		result = map[string]string{"hash": query, "type": "block_or_tx"}
+	} else {
+		// Try as height
+		resultType = "height"
+		result = map[string]string{"height": query, "redirect": "/block/" + query}
+	}
+
+	response := struct {
+		Query  string      `json:"query"`
+		Type   string      `json:"type"`
+		Result interface{} `json:"result"`
+	}{
+		Query:  query,
+		Type:   resultType,
+		Result: result,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
