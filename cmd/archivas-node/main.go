@@ -3,10 +3,14 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -712,4 +716,82 @@ func hashBlock(b *Block) [32]byte {
 		h.Write(b.Proof.Hash[:])
 	}
 	return sha256.Sum256(h.Sum(nil))
+}
+
+// CLI subcommands
+
+func printUsage() {
+	fmt.Println("Archivas Node")
+	fmt.Println()
+	fmt.Println("Usage:")
+	fmt.Println("  archivas-node                Run node (default)")
+	fmt.Println("  archivas-node peers          List connected peers")
+	fmt.Println("  archivas-node status         Show chain status")
+	fmt.Println()
+	fmt.Println("Flags:")
+	fmt.Println("  --rpc :8080                  RPC listen address")
+	fmt.Println("  --p2p :9090                  P2P listen address")
+	fmt.Println("  --db ./data                  Database path")
+	fmt.Println("  --genesis <path>             Genesis file")
+	fmt.Println("  --network-id <id>            Network ID")
+	fmt.Println("  --bootnodes <addrs>          Bootstrap nodes")
+}
+
+func cmdPeers() {
+	nodeURL := "http://localhost:8080"
+	if len(os.Args) > 2 {
+		nodeURL = os.Args[2]
+	}
+
+	resp, err := http.Get(nodeURL + "/healthz")
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	var health struct {
+		Height uint64 \`json:"height"\`
+		Peers  int    \`json:"peers"\`
+	}
+
+	json.NewDecoder(resp.Body).Decode(&health)
+
+	fmt.Printf("Connected Peers: %d\n", health.Peers)
+	fmt.Printf("Chain Height: %d\n", health.Height)
+}
+
+func cmdStatus() {
+	nodeURL := "http://localhost:8080"
+	if len(os.Args) > 2 {
+		nodeURL = os.Args[2]
+	}
+
+	// Get chain tip
+	resp, _ := http.Get(nodeURL + "/chainTip")
+	if resp != nil {
+		defer resp.Body.Close()
+		var tip struct {
+			Height     uint64 \`json:"height"\`
+			BlockHash  []byte \`json:"blockHash"\`
+			Difficulty uint64 \`json:"difficulty"\`
+		}
+		json.NewDecoder(resp.Body).Decode(&tip)
+		
+		fmt.Println("Chain Status:")
+		fmt.Printf("  Height: %d\n", tip.Height)
+		fmt.Printf("  Hash: %x\n", tip.BlockHash[:8])
+		fmt.Printf("  Difficulty: %d\n", tip.Difficulty)
+	}
+
+	// Get health
+	resp2, _ := http.Get(nodeURL + "/healthz")
+	if resp2 != nil {
+		defer resp2.Body.Close()
+		var health struct {
+			Peers int \`json:"peers"\`
+		}
+		json.NewDecoder(resp2.Body).Decode(&health)
+		fmt.Printf("  Peers: %d\n", health.Peers)
+	}
 }
