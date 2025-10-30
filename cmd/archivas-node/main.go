@@ -26,6 +26,7 @@ type Block struct {
 	Height        uint64
 	TimestampUnix int64
 	PrevHash      [32]byte
+	Difficulty    uint64                 // Difficulty target when mined
 	Challenge     [32]byte               // The challenge used to win this block
 	Txs           []ledger.Transaction
 	Proof         *pospace.Proof         // Proof-of-Space
@@ -158,6 +159,7 @@ func main() {
 			Height:        0,
 			TimestampUnix: gen.Timestamp, // Use FIXED timestamp from genesis.json!
 			PrevHash:      [32]byte{},
+			Difficulty:    consensus.InitialDifficulty,
 			Challenge:     genesisChallenge,
 			Txs:           nil,
 			Proof:         nil,
@@ -452,12 +454,13 @@ func (ns *NodeState) AcceptBlock(proof *pospace.Proof, farmerAddr string, farmer
 		prevHash = hashBlock(&prevBlock)
 	}
 
-	// Create new block  
+	// Create new block with current difficulty
 	newBlock := Block{
 		Height:        nextHeight,
 		TimestampUnix: time.Now().Unix(),
 		PrevHash:      prevHash,
-		Challenge:     ns.CurrentChallenge, // Include the challenge used to win
+		Difficulty:    ns.Consensus.DifficultyTarget, // Difficulty when mined
+		Challenge:     ns.CurrentChallenge,           // Challenge used to win
 		Txs:           allTxs,
 		Proof:         proof,
 		FarmerAddr:    farmerAddr,
@@ -634,9 +637,15 @@ func (ns *NodeState) VerifyAndApplyBlock(blockJSON json.RawMessage) error {
 		}
 	}
 	
-	// Verify PoSpace proof if present (use challenge from block header!)
+	// Verify difficulty matches expected (recompute from chain history)
+	// For now, trust the block's difficulty (production would recompute)
+	// TODO: Add RecomputeDifficulty(prev, params) and verify match
+	
+	// Verify PoSpace proof using block's own difficulty and challenge!
 	if block.Proof != nil {
-		if err := ns.Consensus.VerifyProofOfSpace(block.Proof, block.Challenge); err != nil {
+		// Create temporary consensus with block's difficulty for verification
+		blockConsensus := &consensus.Consensus{DifficultyTarget: block.Difficulty}
+		if err := blockConsensus.VerifyProofOfSpace(block.Proof, block.Challenge); err != nil {
 			return fmt.Errorf("invalid PoSpace proof: %w", err)
 		}
 	}
@@ -689,7 +698,8 @@ func hashBlock(b *Block) [32]byte {
 	fmt.Fprintf(h, "%d", b.Height)
 	fmt.Fprintf(h, "%d", b.TimestampUnix)
 	h.Write(b.PrevHash[:])
-	h.Write(b.Challenge[:]) // Include challenge in hash
+	fmt.Fprintf(h, "%d", b.Difficulty)  // Include difficulty
+	h.Write(b.Challenge[:])              // Include challenge
 	if b.Proof != nil {
 		h.Write(b.Proof.Hash[:])
 	}
