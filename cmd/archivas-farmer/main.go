@@ -175,7 +175,21 @@ func cmdFarm() {
 	}
 	fmt.Println()
 	fmt.Println("🚜 Starting farming loop...")
+	fmt.Printf("📈 Metrics: %s/metrics\n", *metricsAddr)
 	fmt.Println()
+	
+	// Update metrics with loaded plots
+	metrics.PlotsLoaded.Set(float64(len(plots)))
+	
+	// Start metrics server
+	go func() {
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", promhttp.Handler())
+		log.Printf("[metrics] serving on %s", *metricsAddr)
+		if err := http.ListenAndServe(*metricsAddr, mux); err != nil {
+			log.Printf("[metrics] failed to start: %v", err)
+		}
+	}()
 
 	// Farming loop
 	ticker := time.NewTicker(2 * time.Second) // Check every 2 seconds
