@@ -8,6 +8,8 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -859,57 +861,4 @@ func (ns *NodeState) GetBlockByHeight(height uint64) (interface{}, error) {
 		"txCount":    len(block.Txs),
 		"txs":        block.Txs,
 	}, nil
-}
-
-func cmdState() {
-	nodeURL := "http://localhost:8080"
-	if len(os.Args) > 2 {
-		nodeURL = os.Args[2]
-	}
-
-	// Get detailed health
-	resp, err := http.Get(nodeURL + "/health")
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
-	}
-	defer resp.Body.Close()
-
-	var health struct {
-		OK     bool `json:"ok"`
-		Height uint64 `json:"height"`
-		Difficulty uint64 `json:"difficulty"`
-		Peers int `json:"peers"`
-		HealthStats map[string]interface{} `json:"healthStats"`
-	}
-
-	json.NewDecoder(resp.Body).Decode(&health)
-
-	fmt.Println("Node State:")
-	fmt.Printf("  Status: %v\n", health.OK)
-	fmt.Printf("  Height: %d\n", health.Height)
-	fmt.Printf("  Difficulty: %d\n", health.Difficulty)
-	fmt.Printf("  Peers: %d\n", health.Peers)
-	
-	if health.HealthStats != nil {
-		fmt.Println("\nHealth Stats:")
-		if uptime, ok := health.HealthStats["uptime"]; ok {
-			fmt.Printf("  Uptime: %v\n", uptime)
-		}
-		if avgBlock, ok := health.HealthStats["avgBlockTime"]; ok {
-			fmt.Printf("  Avg Block Time: %v\n", avgBlock)
-		}
-		if bph, ok := health.HealthStats["blocksPerHour"]; ok {
-			fmt.Printf("  Blocks/Hour: %.2f\n", bph)
-		}
-	}
-}
-
-func cmdDB() {
-	fmt.Println("Database Statistics:")
-	fmt.Println("  Type: BadgerDB")
-	fmt.Println("  Location: ./data")
-	fmt.Println()
-	fmt.Println("Run 'du -sh ./data' to see size")
-	fmt.Println("Check logs for compaction info")
 }
