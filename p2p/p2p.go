@@ -93,11 +93,13 @@ func (n *Network) ConnectPeer(address string) error {
 		Writer:   bufio.NewWriter(conn),
 	}
 
+	// CRITICAL: Register peer BEFORE starting handler
 	n.Lock()
 	n.peers[address] = peer
+	peerCount := len(n.peers)
 	n.Unlock()
 
-	log.Printf("[p2p] connected to peer %s", address)
+	log.Printf("[p2p] connected to peer %s (total peers: %d)", address, peerCount)
 
 	// Start handling messages from this peer
 	go n.handlePeer(peer)
@@ -128,11 +130,13 @@ func (n *Network) acceptLoop() {
 			Writer:   bufio.NewWriter(conn),
 		}
 
+		// CRITICAL: Register peer BEFORE starting handler
 		n.Lock()
 		n.peers[peer.Address] = peer
+		peerCount := len(n.peers)
 		n.Unlock()
 
-		log.Printf("[p2p] accepted connection from %s", peer.Address)
+		log.Printf("[p2p] accepted connection from %s (total peers: %d)", peer.Address, peerCount)
 
 		go n.handlePeer(peer)
 	}
@@ -204,20 +208,27 @@ func (n *Network) BroadcastNewBlock(height uint64, hash [32]byte) {
 		Hash:   hash,
 	}
 
+	// CRITICAL: Use snapshot to avoid holding lock during sends
 	n.RLock()
 	peers := make([]*Peer, 0, len(n.peers))
 	for _, peer := range n.peers {
 		peers = append(peers, peer)
 	}
+	peerCount := len(n.peers)
 	n.RUnlock()
+
+	// Log peer count BEFORE sending
+	log.Printf("[p2p] broadcasting block %d to %d peers (map has %d entries)", height, len(peers), peerCount)
 
 	for _, peer := range peers {
 		if err := n.SendMessage(peer, MsgTypeNewBlock, msg); err != nil {
 			log.Printf("[p2p] failed to send NEW_BLOCK to %s: %v", peer.Address, err)
+		} else {
+			log.Printf("[p2p] sent NEW_BLOCK height=%d to %s", height, peer.Address)
 		}
 	}
 
-	log.Printf("[p2p] broadcasted block %d to %d peers", height, len(peers))
+	log.Printf("[p2p] broadcast complete: block %d sent to %d/%d peers", height, len(peers), peerCount)
 }
 
 // handleMessage processes incoming messages
