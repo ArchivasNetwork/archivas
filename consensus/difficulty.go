@@ -1,65 +1,70 @@
 package consensus
 
 import (
-	"github.com/iljanemesis/archivas/config"
+	"time"
 )
 
-const (
-	// DifficultyAdjustmentWindow is the number of blocks to consider for difficulty adjustment
-	DifficultyAdjustmentWindow = 10
-
-	// InitialDifficulty is the starting difficulty (lower = harder)
-	// This is a uint64 threshold - quality must be LESS than this to win
-	InitialDifficulty = uint64(1 << 50) // ~1.1e15, adjust based on plot size for ~20s blocks
-)
-
-// CalculateDifficulty computes the difficulty target based on recent block times
-func CalculateDifficulty(recentBlockTimes []int64, currentDifficulty uint64) uint64 {
-	if len(recentBlockTimes) < 2 {
-		return InitialDifficulty
+// SmoothedDifficulty calculates difficulty using 10-block moving average
+func SmoothedDifficulty(recentBlocks []BlockInfo, targetBlockTime time.Duration, initialDifficulty uint64) uint64 {
+	if len(recentBlocks) < 2 {
+		return initialDifficulty
 	}
-
-	// Calculate average time between blocks
-	var totalTime int64
-	for i := 1; i < len(recentBlockTimes); i++ {
-		totalTime += recentBlockTimes[i] - recentBlockTimes[i-1]
-	}
-	avgBlockTime := totalTime / int64(len(recentBlockTimes)-1)
-
-	targetBlockTime := int64(config.TargetBlockTimeSeconds)
-
-	// Adjust difficulty
-	// If blocks are too fast, make difficulty harder (lower threshold)
-	// If blocks are too slow, make difficulty easier (higher threshold)
 	
-	ratio := float64(avgBlockTime) / float64(targetBlockTime)
-
-	// Clamp adjustment to prevent wild swings
-	if ratio < 0.5 {
-		ratio = 0.5
-	} else if ratio > 2.0 {
-		ratio = 2.0
+	// Use last 10 blocks for smoothing
+	window := 10
+	if len(recentBlocks) < window {
+		window = len(recentBlocks)
 	}
-
-	newDifficulty := uint64(float64(currentDifficulty) * ratio)
-
-	// Ensure we don't go to extremes
-	minDiff := uint64(1 << 40)  // Minimum (hardest)
-	maxDiff := uint64(1 << 60)  // Maximum (easiest)
-
-	if newDifficulty < minDiff {
-		newDifficulty = minDiff
-	} else if newDifficulty > maxDiff {
-		newDifficulty = maxDiff
+	
+	blocks := recentBlocks[len(recentBlocks)-window:]
+	
+	// Calculate actual average time between blocks
+	totalTime := int64(0)
+	for i := 1; i < len(blocks); i++ {
+		timeDiff := blocks[i].Timestamp - blocks[i-1].Timestamp
+		totalTime += timeDiff
 	}
-
-	return newDifficulty
+	
+	avgTime := totalTime / int64(len(blocks)-1)
+	targetSec := int64(targetBlockTime.Seconds())
+	
+	if avgTime == 0 {
+		return initialDifficulty
+	}
+	
+	// Get last difficulty
+	lastDiff := blocks[len(blocks)-1].Difficulty
+	
+	// Adjust: if blocks too fast, increase difficulty; if too slow, decrease
+	// ratio = targetTime / actualTime
+	// newDiff = oldDiff * ratio
+	
+	ratio := float64(targetSec) / float64(avgTime)
+	newDiff := uint64(float64(lastDiff) * ratio)
+	
+	// Limit adjustment to 2x per window to prevent wild swings
+	maxIncrease := lastDiff * 2
+	maxDecrease := lastDiff / 2
+	
+	if newDiff > maxIncrease {
+		newDiff = maxIncrease
+	}
+	if newDiff < maxDecrease {
+		newDiff = maxDecrease
+	}
+	
+	// Ensure minimum difficulty
+	minDiff := uint64(1000000)
+	if newDiff < minDiff {
+		newDiff = minDiff
+	}
+	
+	return newDiff
 }
 
-// GetDifficultyTarget returns the current difficulty target
-func GetDifficultyTarget() uint64 {
-	// For devnet, start with a moderate difficulty
-	// In production, this would be calculated from chain state
-	return InitialDifficulty
+// BlockInfo contains minimal block data for difficulty calculation
+type BlockInfo struct {
+	Height     uint64
+	Timestamp  int64
+	Difficulty uint64
 }
-
