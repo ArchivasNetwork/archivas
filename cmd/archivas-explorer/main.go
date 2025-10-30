@@ -116,7 +116,13 @@ func (e *Explorer) handleHome(w http.ResponseWriter, r *http.Request) {
     <h2>Network</h2>
     <p style="text-align: center;">
         <a href="/peers">🌐 View Peers</a> | 
-        <a href="/mempool">💧 Mempool</a>
+        <a href="/mempool">💧 Mempool</a> |
+        <a href="/search">🔍 Search</a>
+    </p>
+    
+    <h2>Try the New APIs</h2>
+    <p style="text-align: center; font-size: 12px; color: #888;">
+        v0.6.0 Features: HD Wallets, Account History, Smart Search
     </p>
 
     <p style="text-align: center; margin-top: 50px; font-size: 12px; color: #666;">

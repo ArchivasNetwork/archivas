@@ -113,7 +113,7 @@ func (ks *Keystore) Unlock(password string) error {
 	var salt []byte // Would need to store salt
 	
 	// Derive key
-	key, err := scrypt.Key([]byte(password), salt, 
+	_, err := scrypt.Key([]byte(password), salt, 
 		ks.Crypto.KDFParams["N"],
 		ks.Crypto.KDFParams["r"],
 		ks.Crypto.KDFParams["p"],
@@ -122,7 +122,7 @@ func (ks *Keystore) Unlock(password string) error {
 		return fmt.Errorf("scrypt failed: %w", err)
 	}
 
-	// Decrypt (simplified for now)
+	// Decrypt (simplified for now - full implementation would decrypt with key)
 	ks.unlocked = true
 	return nil
 }
