@@ -17,7 +17,7 @@ type Consensus struct {
 // NewConsensus creates a new consensus instance
 func NewConsensus() *Consensus {
 	return &Consensus{
-		DifficultyTarget: config.InitialDifficulty,
+		DifficultyTarget: 1125899906842624, // 2^50 initial difficulty
 		TargetBlockTime:  20 * time.Second,
 	}
 }
