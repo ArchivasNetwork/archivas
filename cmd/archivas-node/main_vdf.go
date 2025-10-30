@@ -283,15 +283,24 @@ func (ns *NodeStateVDF) AcceptBlock(proof *pospace.Proof, farmerAddr string, far
 
 	// Update difficulty
 	if len(ns.Chain) >= 2 {
-		recentTimes := make([]int64, 0, consensus.DifficultyAdjustmentWindow)
-		startIdx := len(ns.Chain) - consensus.DifficultyAdjustmentWindow
+		recentTimes := make([]int64, 0, 10)
+		startIdx := len(ns.Chain) - 10
 		if startIdx < 0 {
 			startIdx = 0
 		}
 		for i := startIdx; i < len(ns.Chain); i++ {
 			recentTimes = append(recentTimes, ns.Chain[i].TimestampUnix)
 		}
-		ns.Consensus.UpdateDifficulty(recentTimes)
+		// Calculate average block time
+		var avgBlockTime time.Duration
+		if len(recentTimes) > 1 {
+			var total int64
+			for _, t := range recentTimes {
+				total += t
+			}
+			avgBlockTime = time.Duration(total/int64(len(recentTimes))) * time.Second
+		}
+		ns.Consensus.UpdateDifficulty(avgBlockTime)
 	}
 
 	log.Printf("✅ Accepted block %d from farmer %s (PoSpace ✅, VDF t=%d ✅, reward: %.8f %s, txs: %d)",
@@ -332,11 +341,11 @@ func (ns *NodeStateVDF) UpdateVDF(seed []byte, iterations uint64, output []byte)
 func (ns *NodeStateVDF) GetChainTip() ([32]byte, uint64, uint64) {
 	ns.RLock()
 	defer ns.RUnlock()
-	
+
 	if len(ns.Chain) == 0 {
 		return [32]byte{}, 0, ns.Consensus.DifficultyTarget
 	}
-	
+
 	tip := ns.Chain[len(ns.Chain)-1]
 	return hashBlockVDF(&tip), tip.Height, ns.Consensus.DifficultyTarget
 }

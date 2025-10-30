@@ -172,7 +172,7 @@ func main() {
 			Height:        0,
 			TimestampUnix: gen.Timestamp, // Use FIXED timestamp from genesis.json!
 			PrevHash:      [32]byte{},
-			Difficulty:    consensus.InitialDifficulty,
+			Difficulty:    1125899906842624, // 2^50 initial difficulty
 			Challenge:     genesisChallenge,
 			Txs:           nil,
 			Proof:         nil,
@@ -519,15 +519,24 @@ func (ns *NodeState) AcceptBlock(proof *pospace.Proof, farmerAddr string, farmer
 
 	// Update difficulty (every block for now, could be less frequent)
 	if len(ns.Chain) >= 2 {
-		recentTimes := make([]int64, 0, consensus.DifficultyAdjustmentWindow)
-		startIdx := len(ns.Chain) - consensus.DifficultyAdjustmentWindow
+		recentTimes := make([]int64, 0, 10)
+		startIdx := len(ns.Chain) - 10
 		if startIdx < 0 {
 			startIdx = 0
 		}
 		for i := startIdx; i < len(ns.Chain); i++ {
 			recentTimes = append(recentTimes, ns.Chain[i].TimestampUnix)
 		}
-		ns.Consensus.UpdateDifficulty(recentTimes)
+			// Calculate average block time
+			var avgBlockTime time.Duration
+			if len(recentTimes) > 1 {
+				var total int64
+				for _, t := range recentTimes {
+					total += t
+				}
+				avgBlockTime = time.Duration(total/int64(len(recentTimes))) * time.Second
+			}
+			ns.Consensus.UpdateDifficulty(avgBlockTime)
 	}
 
 	// PERSIST TO DISK
