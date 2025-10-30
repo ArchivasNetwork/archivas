@@ -71,7 +71,54 @@ func (n *Network) SetPeerStore(store PeerStore) {
 				}
 			}
 		}()
+		
+		// Start peer gossip loop
+		go n.peerGossipLoop()
 	}
+}
+
+// peerGossipLoop periodically shares known peers with connected peers
+func (n *Network) peerGossipLoop() {
+	ticker := time.NewTicker(60 * time.Second)
+	defer ticker.Stop()
+	
+	for range ticker.C {
+		n.gossipPeers()
+	}
+}
+
+// gossipPeers shares our known peers with connected peers
+func (n *Network) gossipPeers() {
+	// Get list of known peers from store
+	if n.peerStore == nil {
+		return
+	}
+	
+	knownPeers, err := n.peerStore.List()
+	if err != nil || len(knownPeers) == 0 {
+		return
+	}
+	
+	// Create gossip message
+	msg := GossipPeersMessage{
+		Peers: knownPeers,
+	}
+	
+	// Send to all connected peers
+	n.RLock()
+	peers := make([]*Peer, 0, len(n.peers))
+	for _, peer := range n.peers {
+		peers = append(peers, peer)
+	}
+	n.RUnlock()
+	
+	for _, peer := range peers {
+		if err := n.SendMessage(peer, MsgTypeGossipPeers, msg); err != nil {
+			log.Printf("[p2p] failed to send GOSSIP_PEERS to %s: %v", peer.Address, err)
+		}
+	}
+	
+	log.Printf("[p2p] gossiped %d known peers to %d connected peers", len(knownPeers), len(peers))
 }
 
 // Start starts the P2P network listener
@@ -278,8 +325,52 @@ func (n *Network) handleMessage(peer *Peer, msg *Message) {
 		n.handleGetStatus(peer, msg.Payload)
 	case MsgTypeStatus:
 		n.handleStatus(peer, msg.Payload)
+	case MsgTypeGossipPeers:
+		n.handleGossipPeers(peer, msg.Payload)
 	default:
 		log.Printf("[p2p] unknown message type %d from %s", msg.Type, peer.Address)
+	}
+}
+
+// handleGossipPeers handles received peer gossip
+func (n *Network) handleGossipPeers(peer *Peer, payload json.RawMessage) {
+	var gossip GossipPeersMessage
+	if err := json.Unmarshal(payload, &gossip); err != nil {
+		log.Printf("[p2p] invalid GOSSIP_PEERS from %s", peer.Address)
+		return
+	}
+	
+	log.Printf("[p2p] received %d peers from %s", len(gossip.Peers), peer.Address)
+	
+	// Connect to new peers (max 20 total, avoid self)
+	n.RLock()
+	currentCount := len(n.peers)
+	n.RUnlock()
+	
+	if currentCount >= 20 {
+		return // Already at max
+	}
+	
+	for _, addr := range gossip.Peers {
+		// Skip if already connected
+		n.RLock()
+		_, exists := n.peers[addr]
+		n.RUnlock()
+		
+		if exists || addr == n.listenAddr || addr == "" {
+			continue
+		}
+		
+		// Try to connect
+		go func(a string) {
+			time.Sleep(time.Duration(len(a)%5) * time.Second) // Stagger
+			n.ConnectPeer(a)
+		}(addr)
+		
+		// Don't overwhelm - connect slowly
+		if currentCount >= 20 {
+			break
+		}
 	}
 }
 
