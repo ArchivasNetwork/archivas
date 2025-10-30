@@ -22,18 +22,18 @@ func NewReorgDetector() *ReorgDetector {
 func (r *ReorgDetector) DetectReorg(currentTipWork, newChainWork uint64, commonHeight uint64, currentHeight uint64) (bool, uint64, error) {
 	// Calculate reorg depth
 	reorgDepth := currentHeight - commonHeight
-	
+
 	// Safety check: don't reorg too deep
 	if reorgDepth > uint64(r.MaxReorgDepth) {
 		return false, 0, fmt.Errorf("reorg too deep: %d blocks (max: %d)", reorgDepth, r.MaxReorgDepth)
 	}
-	
+
 	// Compare cumulative work
 	if newChainWork > currentTipWork {
 		// New chain has more work - reorg needed
 		return true, commonHeight, nil
 	}
-	
+
 	// Current chain has more work - no reorg
 	return false, 0, nil
 }
@@ -57,4 +57,3 @@ func CalculateReorgInfo(forkHeight, oldTip, newTip uint64) ReorgInfo {
 		BlocksAdded:   newTip - forkHeight,
 	}
 }
-
