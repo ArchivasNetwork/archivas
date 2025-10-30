@@ -16,6 +16,11 @@ const (
 	MsgTypeGetStatus   MessageType = 6
 	MsgTypeStatus      MessageType = 7
 	MsgTypeGossipPeers MessageType = 8
+	// v0.5.0: Enhanced gossip
+	MsgTypeInv         MessageType = 9  // Inventory announcement
+	MsgTypeReq         MessageType = 10 // Request data
+	MsgTypeRes         MessageType = 11 // Response with data
+	MsgTypeTxBroadcast MessageType = 12 // Transaction broadcast
 )
 
 // Message represents a P2P protocol message
@@ -66,4 +71,28 @@ type GossipPeersMessage struct {
 	Addrs  []string `json:"addrs"`  // "ip:port" addresses
 	SeenAt int64    `json:"seenAt"` // unix timestamp
 	NetID  string   `json:"netId"`  // network identifier for validation
+}
+
+// InvMessage announces available data (blocks or txs)
+type InvMessage struct {
+	Type  string   `json:"type"` // "block" or "tx"
+	Hashes []string `json:"hashes"` // hex-encoded hashes
+}
+
+// ReqMessage requests specific data
+type ReqMessage struct {
+	Type  string   `json:"type"` // "block" or "tx"
+	Hashes []string `json:"hashes"` // hex-encoded hashes
+}
+
+// ResMessage contains requested data
+type ResMessage struct {
+	Type string          `json:"type"` // "block" or "tx"
+	Data json.RawMessage `json:"data"` // actual data
+}
+
+// TxBroadcastMessage broadcasts a transaction
+type TxBroadcastMessage struct {
+	TxHash string          `json:"txHash"`
+	TxData json.RawMessage `json:"txData"`
 }
