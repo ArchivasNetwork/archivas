@@ -8,13 +8,14 @@ import (
 type MessageType uint8
 
 const (
-	MsgTypePing      MessageType = 1
-	MsgTypePong      MessageType = 2
-	MsgTypeNewBlock  MessageType = 3
-	MsgTypeGetBlock  MessageType = 4
-	MsgTypeBlockData MessageType = 5
-	MsgTypeGetStatus MessageType = 6
-	MsgTypeStatus    MessageType = 7
+	MsgTypePing        MessageType = 1
+	MsgTypePong        MessageType = 2
+	MsgTypeNewBlock    MessageType = 3
+	MsgTypeGetBlock    MessageType = 4
+	MsgTypeBlockData   MessageType = 5
+	MsgTypeGetStatus   MessageType = 6
+	MsgTypeStatus      MessageType = 7
+	MsgTypeGossipPeers MessageType = 8
 )
 
 // Message represents a P2P protocol message
