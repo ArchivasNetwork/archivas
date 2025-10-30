@@ -34,7 +34,7 @@ type Block struct {
 	Txs           []ledger.Transaction
 	Proof         *pospace.Proof // Proof-of-Space
 	FarmerAddr    string         // Address to receive block reward
-	
+
 	// v0.5.0: Cumulative work for fork resolution
 	CumulativeWork uint64 // Total work from genesis to this block
 }
@@ -534,16 +534,16 @@ func (ns *NodeState) AcceptBlock(proof *pospace.Proof, farmerAddr string, farmer
 		for i := startIdx; i < len(ns.Chain); i++ {
 			recentTimes = append(recentTimes, ns.Chain[i].TimestampUnix)
 		}
-			// Calculate average block time
-			var avgBlockTime time.Duration
-			if len(recentTimes) > 1 {
-				var total int64
-				for _, t := range recentTimes {
-					total += t
-				}
-				avgBlockTime = time.Duration(total/int64(len(recentTimes))) * time.Second
+		// Calculate average block time
+		var avgBlockTime time.Duration
+		if len(recentTimes) > 1 {
+			var total int64
+			for _, t := range recentTimes {
+				total += t
 			}
-			ns.Consensus.UpdateDifficulty(avgBlockTime)
+			avgBlockTime = time.Duration(total/int64(len(recentTimes))) * time.Second
+		}
+		ns.Consensus.UpdateDifficulty(avgBlockTime)
 	}
 
 	// PERSIST TO DISK
@@ -811,15 +811,15 @@ func hashBlock(b *Block) [32]byte {
 func (ns *NodeState) GetRecentBlocks(count int) interface{} {
 	ns.RLock()
 	defer ns.RUnlock()
-	
+
 	chainLen := len(ns.Chain)
 	if count > chainLen {
 		count = chainLen
 	}
-	
+
 	start := chainLen - count
 	recentBlocks := make([]map[string]interface{}, 0, count)
-	
+
 	for i := start; i < chainLen; i++ {
 		block := ns.Chain[i]
 		blockHash := hashBlock(&block)
@@ -832,7 +832,7 @@ func (ns *NodeState) GetRecentBlocks(count int) interface{} {
 			"txCount":    len(block.Txs),
 		})
 	}
-	
+
 	return recentBlocks
 }
 
@@ -840,14 +840,14 @@ func (ns *NodeState) GetRecentBlocks(count int) interface{} {
 func (ns *NodeState) GetBlockByHeight(height uint64) (interface{}, error) {
 	ns.RLock()
 	defer ns.RUnlock()
-	
+
 	if int(height) >= len(ns.Chain) {
 		return nil, fmt.Errorf("block %d not found (tip: %d)", height, len(ns.Chain)-1)
 	}
-	
+
 	block := ns.Chain[height]
 	blockHash := hashBlock(&block)
-	
+
 	return map[string]interface{}{
 		"height":     block.Height,
 		"hash":       hex.EncodeToString(blockHash[:]),
@@ -859,4 +859,57 @@ func (ns *NodeState) GetBlockByHeight(height uint64) (interface{}, error) {
 		"txCount":    len(block.Txs),
 		"txs":        block.Txs,
 	}, nil
+}
+
+func cmdState() {
+	nodeURL := "http://localhost:8080"
+	if len(os.Args) > 2 {
+		nodeURL = os.Args[2]
+	}
+
+	// Get detailed health
+	resp, err := http.Get(nodeURL + "/health")
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	var health struct {
+		OK     bool `json:"ok"`
+		Height uint64 `json:"height"`
+		Difficulty uint64 `json:"difficulty"`
+		Peers int `json:"peers"`
+		HealthStats map[string]interface{} `json:"healthStats"`
+	}
+
+	json.NewDecoder(resp.Body).Decode(&health)
+
+	fmt.Println("Node State:")
+	fmt.Printf("  Status: %v\n", health.OK)
+	fmt.Printf("  Height: %d\n", health.Height)
+	fmt.Printf("  Difficulty: %d\n", health.Difficulty)
+	fmt.Printf("  Peers: %d\n", health.Peers)
+	
+	if health.HealthStats != nil {
+		fmt.Println("\nHealth Stats:")
+		if uptime, ok := health.HealthStats["uptime"]; ok {
+			fmt.Printf("  Uptime: %v\n", uptime)
+		}
+		if avgBlock, ok := health.HealthStats["avgBlockTime"]; ok {
+			fmt.Printf("  Avg Block Time: %v\n", avgBlock)
+		}
+		if bph, ok := health.HealthStats["blocksPerHour"]; ok {
+			fmt.Printf("  Blocks/Hour: %.2f\n", bph)
+		}
+	}
+}
+
+func cmdDB() {
+	fmt.Println("Database Statistics:")
+	fmt.Println("  Type: BadgerDB")
+	fmt.Println("  Location: ./data")
+	fmt.Println()
+	fmt.Println("Run 'du -sh ./data' to see size")
+	fmt.Println("Check logs for compaction info")
 }
