@@ -20,6 +20,7 @@ type NodeState interface {
 	GetCurrentVDF() (seed []byte, iterations uint64, output []byte, hasVDF bool)
 	GetGenesisHash() [32]byte
 	GetPeerCount() int
+	GetPeerList() (connected []string, known []string)
 }
 
 // FarmingServer extends Server with farming capabilities
@@ -56,6 +57,7 @@ func (s *FarmingServer) Start(addr string) error {
 	// Network endpoints
 	http.HandleFunc("/genesisHash", s.handleGenesisHash)
 	http.HandleFunc("/healthz", s.handleHealthz)
+	http.HandleFunc("/peers", s.handlePeers)
 
 	return http.ListenAndServe(addr, nil)
 }
@@ -268,6 +270,27 @@ func (s *FarmingServer) handleHealthz(w http.ResponseWriter, r *http.Request) {
 		Height:     height,
 		Difficulty: difficulty,
 		Peers:      peerCount,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// handlePeers handles GET /peers
+func (s *FarmingServer) handlePeers(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	connected, known := s.nodeState.GetPeerList()
+
+	response := struct {
+		Connected []string `json:"connected"`
+		Known     []string `json:"known"`
+	}{
+		Connected: connected,
+		Known:     known,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

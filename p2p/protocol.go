@@ -61,7 +61,9 @@ type StatusMessage struct {
 	TipHash    [32]byte `json:"tipHash"`
 }
 
-// GossipPeersMessage is sent to share known peer addresses
+// GossipPeersMessage is sent to share known peer addresses with network validation
 type GossipPeersMessage struct {
-	Peers []string `json:"peers"`
+	Addrs  []string `json:"addrs"`  // "ip:port" addresses
+	SeenAt int64    `json:"seenAt"` // unix timestamp
+	NetID  string   `json:"netId"`  // network identifier for validation
 }

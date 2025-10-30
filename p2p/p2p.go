@@ -30,6 +30,18 @@ type Network struct {
 	listenAddr  string
 	syncState   *SyncState
 	peerStore   PeerStore
+	
+	// Gossip configuration
+	networkID         string
+	enableGossip      bool
+	gossipInterval    time.Duration
+	maxPeers          int
+	dialsPerMinute    int
+	
+	// Dialing state
+	dialing           map[string]bool // addresses currently being dialed
+	knownPeers        map[string]int64 // all known peers with last seen timestamp
+	dialingSem        chan struct{} // rate limiter for new connections
 }
 
 // NodeHandler interface for node callbacks
@@ -43,6 +55,15 @@ type NodeHandler interface {
 	VerifyAndApplyBlock(blockJSON json.RawMessage) error
 }
 
+// GossipConfig holds configuration for peer gossip
+type GossipConfig struct {
+	NetworkID      string
+	EnableGossip   bool
+	Interval       time.Duration
+	MaxPeers       int
+	DialsPerMinute int
+}
+
 // NewNetwork creates a new P2P network
 func NewNetwork(listenAddr string, handler NodeHandler) *Network {
 	return &Network{
@@ -51,6 +72,51 @@ func NewNetwork(listenAddr string, handler NodeHandler) *Network {
 		listenAddr:  listenAddr,
 		syncState:   NewSyncState(),
 		peerStore:   nil, // Will be set via SetPeerStore
+		
+		// Default gossip config
+		networkID:      "archivas-devnet-v3",
+		enableGossip:   true,
+		gossipInterval: 60 * time.Second,
+		maxPeers:       20,
+		dialsPerMinute: 5,
+		
+		dialing:    make(map[string]bool),
+		knownPeers: make(map[string]int64),
+	}
+}
+
+// SetGossipConfig updates the gossip configuration
+func (n *Network) SetGossipConfig(cfg GossipConfig) {
+	n.Lock()
+	defer n.Unlock()
+	
+	n.networkID = cfg.NetworkID
+	n.enableGossip = cfg.EnableGossip
+	n.gossipInterval = cfg.Interval
+	n.maxPeers = cfg.MaxPeers
+	n.dialsPerMinute = cfg.DialsPerMinute
+	
+	// Create rate limiter
+	if cfg.DialsPerMinute > 0 {
+		n.dialingSem = make(chan struct{}, cfg.DialsPerMinute)
+		// Pre-fill semaphore
+		for i := 0; i < cfg.DialsPerMinute; i++ {
+			n.dialingSem <- struct{}{}
+		}
+		
+		// Refill every minute
+		go func() {
+			ticker := time.NewTicker(time.Minute)
+			defer ticker.Stop()
+			for range ticker.C {
+				for i := 0; i < cfg.DialsPerMinute; i++ {
+					select {
+					case n.dialingSem <- struct{}{}:
+					default:
+					}
+				}
+			}
+		}()
 	}
 }
 
@@ -99,9 +165,15 @@ func (n *Network) gossipPeers() {
 		return
 	}
 	
-	// Create gossip message
+	// Create gossip message with jitter (±20%)
+	jitterFactor := 0.8 + 0.4*float64(time.Now().UnixNano()%100)/100.0
+	jitter := time.Duration(float64(n.gossipInterval) * jitterFactor)
+	time.Sleep(jitter - n.gossipInterval) // Adjust next tick
+	
 	msg := GossipPeersMessage{
-		Peers: knownPeers,
+		Addrs:  knownPeers,
+		SeenAt: time.Now().Unix(),
+		NetID:  n.networkID,
 	}
 	
 	// Send to all connected peers
@@ -332,7 +404,7 @@ func (n *Network) handleMessage(peer *Peer, msg *Message) {
 	}
 }
 
-// handleGossipPeers handles received peer gossip
+// handleGossipPeers handles received peer gossip with rate limiting and network validation
 func (n *Network) handleGossipPeers(peer *Peer, payload json.RawMessage) {
 	var gossip GossipPeersMessage
 	if err := json.Unmarshal(payload, &gossip); err != nil {
@@ -340,36 +412,84 @@ func (n *Network) handleGossipPeers(peer *Peer, payload json.RawMessage) {
 		return
 	}
 	
-	log.Printf("[p2p] received %d peers from %s", len(gossip.Peers), peer.Address)
-	
-	// Connect to new peers (max 20 total, avoid self)
-	n.RLock()
-	currentCount := len(n.peers)
-	n.RUnlock()
-	
-	if currentCount >= 20 {
-		return // Already at max
+	// Validate network ID
+	if gossip.NetID != n.networkID {
+		log.Printf("[p2p] ignoring GOSSIP_PEERS from %s: network mismatch (got %s, want %s)", 
+			peer.Address, gossip.NetID, n.networkID)
+		return
 	}
 	
-	for _, addr := range gossip.Peers {
-		// Skip if already connected
+	log.Printf("[p2p] received GOSSIP_PEERS: addrs=%d from=%s netID=%s", 
+		len(gossip.Addrs), peer.Address, gossip.NetID)
+	
+	// Merge into known peers
+	n.Lock()
+	merged := 0
+	for _, addr := range gossip.Addrs {
+		if addr == "" || addr == n.listenAddr {
+			continue // Skip self and empty
+		}
+		
+		// Dedupe: only add if not already known
+		if _, known := n.knownPeers[addr]; !known {
+			n.knownPeers[addr] = gossip.SeenAt
+			merged++
+			
+			// Persist to store
+			if n.peerStore != nil {
+				n.peerStore.Add(addr)
+			}
+		}
+	}
+	currentPeers := len(n.peers)
+	totalKnown := len(n.knownPeers)
+	n.Unlock()
+	
+	log.Printf("[p2p] merged %d new addrs (known=%d, connected=%d)", merged, totalKnown, currentPeers)
+	
+	// Auto-dial new peers if under max
+	if currentPeers >= n.maxPeers {
+		return
+	}
+	
+	// Try connecting to new addresses with rate limiting
+	for _, addr := range gossip.Addrs {
 		n.RLock()
-		_, exists := n.peers[addr]
+		_, connected := n.peers[addr]
+		_, dialing := n.dialing[addr]
+		peerCount := len(n.peers)
 		n.RUnlock()
 		
-		if exists || addr == n.listenAddr || addr == "" {
+		if connected || dialing || addr == n.listenAddr || addr == "" {
 			continue
 		}
 		
-		// Try to connect
-		go func(a string) {
-			time.Sleep(time.Duration(len(a)%5) * time.Second) // Stagger
-			n.ConnectPeer(a)
-		}(addr)
-		
-		// Don't overwhelm - connect slowly
-		if currentCount >= 20 {
+		if peerCount >= n.maxPeers {
 			break
+		}
+		
+		// Rate limit: acquire dial slot
+		select {
+		case <-n.dialingSem:
+			// Got slot, try dialing
+			n.Lock()
+			n.dialing[addr] = true
+			n.Unlock()
+			
+			go func(a string) {
+				defer func() {
+					n.Lock()
+					delete(n.dialing, a)
+					n.Unlock()
+				}()
+				
+				log.Printf("[p2p] auto-dialing discovered peer: %s", a)
+				n.ConnectPeer(a)
+			}(addr)
+		default:
+			// No slots available, will try later
+			log.Printf("[p2p] dial rate limit reached, deferring connection to %s", addr)
+			return
 		}
 	}
 }
@@ -516,6 +636,24 @@ func (n *Network) GetPeerCount() int {
 	n.RLock()
 	defer n.RUnlock()
 	return len(n.peers)
+}
+
+// GetPeerList returns connected and known peer addresses
+func (n *Network) GetPeerList() (connected []string, known []string) {
+	n.RLock()
+	defer n.RUnlock()
+	
+	connected = make([]string, 0, len(n.peers))
+	for addr := range n.peers {
+		connected = append(connected, addr)
+	}
+	
+	known = make([]string, 0, len(n.knownPeers))
+	for addr := range n.knownPeers {
+		known = append(known, addr)
+	}
+	
+	return connected, known
 }
 
 // RequestBlock requests a specific block from any peer
