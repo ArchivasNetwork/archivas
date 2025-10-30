@@ -28,6 +28,8 @@ type NodeState interface {
 	GetPeerCount() int
 	GetPeerList() (connected []string, known []string)
 	GetHealthStats() interface{}
+	GetRecentBlocks(count int) interface{}
+	GetBlockByHeight(height uint64) (interface{}, error)
 }
 
 // FarmingServer extends Server with farming capabilities
@@ -85,26 +87,46 @@ func (s *FarmingServer) Start(addr string) error {
 	// Farming endpoints
 	http.HandleFunc("/challenge", s.wrapMetrics("/challenge", s.handleGetChallenge))
 	http.HandleFunc("/submitBlock", s.wrapMetrics("/submitBlock", s.handleSubmitBlock))
-	
+
 	// VDF/Timelord endpoints
 	http.HandleFunc("/chainTip", s.wrapMetrics("/chainTip", s.handleChainTip))
 	http.HandleFunc("/vdf/update", s.wrapMetrics("/vdf/update", s.handleVDFUpdate))
-	
+
 	// Network endpoints
 	http.HandleFunc("/genesisHash", s.wrapMetrics("/genesisHash", s.handleGenesisHash))
 	http.HandleFunc("/healthz", s.wrapMetrics("/healthz", s.handleHealthz))
 	http.HandleFunc("/peers", s.wrapMetrics("/peers", s.handlePeers))
 	http.HandleFunc("/health", s.wrapMetrics("/health", s.handleHealthDetailed))
-	
+
 	// Faucet endpoint (if enabled)
 	if s.faucetEnabled {
 		http.HandleFunc("/faucet", s.wrapMetrics("/faucet", s.handleFaucet))
 	}
 	
+	// Developer endpoints
+	http.HandleFunc("/recentBlocks", s.wrapMetrics("/recentBlocks", s.handleRecentBlocks))
+	http.HandleFunc("/block/", s.wrapMetrics("/block", s.handleBlockByHeight))
+	
 	// Metrics endpoint
 	http.Handle("/metrics", promhttp.Handler())
 
-	return http.ListenAndServe(addr, nil)
+	return http.ListenAndServe(addr, s.corsMiddleware(http.DefaultServeMux))
+}
+
+// corsMiddleware adds CORS headers for external developers
+func (s *FarmingServer) corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		
+		next.ServeHTTP(w, r)
+	})
 }
 
 // wrapMetrics wraps an HTTP handler to increment request metrics
@@ -158,7 +180,7 @@ func (s *FarmingServer) handleSubmitBlock(w http.ResponseWriter, r *http.Request
 		FarmerAddr   string         `json:"farmerAddr"`
 		FarmerPubKey string         `json:"farmerPubKey"`
 	}
-	
+
 	if err := json.NewDecoder(r.Body).Decode(&submission); err != nil {
 		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
 		return
@@ -262,7 +284,7 @@ func (s *FarmingServer) handleVDFUpdate(w http.ResponseWriter, r *http.Request) 
 	}); ok {
 		updater.UpdateVDFState(update.Seed, update.Iterations, update.Output)
 	}
-	
+
 	seedPreview := update.Seed
 	if len(seedPreview) > 8 {
 		seedPreview = seedPreview[:8]
@@ -271,8 +293,8 @@ func (s *FarmingServer) handleVDFUpdate(w http.ResponseWriter, r *http.Request) 
 	if len(outputPreview) > 8 {
 		outputPreview = outputPreview[:8]
 	}
-	
-	log.Printf("[vdf] Received VDF update: iter=%d seed=%x output=%x", 
+
+	log.Printf("[vdf] Received VDF update: iter=%d seed=%x output=%x",
 		update.Iterations, seedPreview, outputPreview)
 
 	response := SubmitTxResponse{
@@ -362,11 +384,11 @@ func (s *FarmingServer) handleHealthDetailed(w http.ResponseWriter, r *http.Requ
 	healthStats := s.nodeState.GetHealthStats()
 
 	response := struct {
-		OK           bool        `json:"ok"`
-		Height       uint64      `json:"height"`
-		Difficulty   uint64      `json:"difficulty"`
-		Peers        int         `json:"peers"`
-		HealthStats  interface{} `json:"healthStats"`
+		OK          bool        `json:"ok"`
+		Height      uint64      `json:"height"`
+		Difficulty  uint64      `json:"difficulty"`
+		Peers       int         `json:"peers"`
+		HealthStats interface{} `json:"healthStats"`
 	}{
 		OK:          true,
 		Height:      height,
@@ -378,7 +400,6 @@ func (s *FarmingServer) handleHealthDetailed(w http.ResponseWriter, r *http.Requ
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
-
 
 // handleFaucet handles GET /faucet?address=<addr>
 func (s *FarmingServer) handleFaucet(w http.ResponseWriter, r *http.Request) {
@@ -470,4 +491,54 @@ func (s *FarmingServer) handleFaucet(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+// handleRecentBlocks handles GET /recentBlocks?count=10
+func (s *FarmingServer) handleRecentBlocks(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	count := 10
+	if countStr := r.URL.Query().Get("count"); countStr != "" {
+		fmt.Sscanf(countStr, "%d", &count)
+	}
+	
+	if count > 100 {
+		count = 100 // Max 100
+	}
+
+	blocks := s.nodeState.GetRecentBlocks(count)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"blocks": blocks,
+		"count":  count,
+	})
+}
+
+// handleBlockByHeight handles GET /block/<height>
+func (s *FarmingServer) handleBlockByHeight(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse height from URL
+	heightStr := r.URL.Path[len("/block/"):]
+	var height uint64
+	if _, err := fmt.Sscanf(heightStr, "%d", &height); err != nil {
+		http.Error(w, "Invalid height", http.StatusBadRequest)
+		return
+	}
+
+	block, err := s.nodeState.GetBlockByHeight(height)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(block)
 }

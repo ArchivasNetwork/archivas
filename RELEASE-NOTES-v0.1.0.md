@@ -2,58 +2,58 @@
 
 **Release Date:** October 30, 2025  
 **Tag:** `v0.1.0-devnet`  
-**Status:** 🟢 **Multi-Node Testnet Live**
+**Status:**  **Multi-Node Testnet Live**
 
 ---
 
-## 🎉 What is Archivas?
+##  What is Archivas?
 
 Archivas is a **Proof-of-Space-and-Time L1 blockchain** where disk space mines blocks, not energy or capital.
 
 **Key Features:**
 - 🌾 **Permissionless farming** - Anyone with disk can participate
-- ⏰ **VDF temporal security** - Sequential time proofs prevent grinding
-- 🔐 **Cryptographic ownership** - secp256k1 signatures, bech32 addresses
-- 💾 **Persistent state** - Crash recovery, multi-node sync
-- 🌍 **P2P networking** - Decentralized block propagation
+-  **VDF temporal security** - Sequential time proofs prevent grinding
+-  **Cryptographic ownership** - secp256k1 signatures, bech32 addresses
+-  **Persistent state** - Crash recovery, multi-node sync
+-  **P2P networking** - Decentralized block propagation
 
 **Same consensus class as Chia Network - built from scratch in Go.**
 
 ---
 
-## ✅ What's New in v0.1.0
+##  What's New in v0.1.0
 
 ### **Multi-Node Testnet**
-- ✅ **2-node network** verified and operational
-- ✅ **Block synchronization** (IBD) working
-- ✅ **P2P gossip** propagating blocks automatically
-- ✅ **Deterministic genesis** - all nodes start from same state
-- ✅ **Challenge-in-header** - historical verification works
-- ✅ **Difficulty-in-header** - adaptive difficulty syncs correctly
+-  **2-node network** verified and operational
+-  **Block synchronization** (IBD) working
+-  **P2P gossip** propagating blocks automatically
+-  **Deterministic genesis** - all nodes start from same state
+-  **Challenge-in-header** - historical verification works
+-  **Difficulty-in-header** - adaptive difficulty syncs correctly
 
 ### **Proof-of-Space Farming**
-- ✅ Plot generation (k=16 to k=32)
-- ✅ Quality-based lottery
-- ✅ Block rewards (20 RCHV)
-- ✅ **Live VPS farming** - 26+ blocks mined!
+-  Plot generation (k=16 to k=32)
+-  Quality-based lottery
+-  Block rewards (20 RCHV)
+-  **Live VPS farming** - 26+ blocks mined!
 
 ### **VDF/Timelord**
-- ✅ Iterative SHA-256 VDF
-- ✅ Challenge derivation from VDF output
-- ✅ Temporal ordering enforced
-- ✅ Grinding resistant
+-  Iterative SHA-256 VDF
+-  Challenge derivation from VDF output
+-  Temporal ordering enforced
+-  Grinding resistant
 
 ### **Infrastructure**
-- ✅ BadgerDB persistence
-- ✅ HTTP RPC API
-- ✅ TCP P2P networking
-- ✅ Wallet CLI
-- ✅ Farmer CLI
-- ✅ Timelord process
+-  BadgerDB persistence
+-  HTTP RPC API
+-  TCP P2P networking
+-  Wallet CLI
+-  Farmer CLI
+-  Timelord process
 
 ---
 
-## 📊 Test Results
+##  Test Results
 
 **Network:**
 - Nodes: 2 (synchronized)
@@ -72,11 +72,11 @@ Archivas is a **Proof-of-Space-and-Time L1 blockchain** where disk space mines b
 - Server B synced 26 blocks from Server A
 - Sync Speed: ~1 block/2 seconds
 - Verification: All PoSpace proofs validated
-- Status: ✅ SUCCESS
+- Status:  SUCCESS
 
 ---
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### **Prerequisites**
 - Ubuntu 20.04+ or similar
@@ -138,28 +138,28 @@ curl http://localhost:8080/balance/<YOUR_ADDRESS>
 
 ## 🔧 What's Working
 
-### **Core Blockchain** ✅
+### **Core Blockchain** 
 - Block production
 - Transaction processing
 - State management
 - Difficulty adjustment
 - Reward distribution
 
-### **Consensus** ✅
+### **Consensus** 
 - Proof-of-Space (disk-based lottery)
 - VDF (temporal security)
 - Challenge generation
 - Quality verification
 - Adaptive difficulty
 
-### **Networking** ✅
+### **Networking** 
 - P2P connections
 - Block gossip
 - Block sync (IBD)
 - Peer discovery (bootnodes)
 - Multi-node consensus
 
-### **Tools** ✅
+### **Tools** 
 - Wallet CLI (generate, send)
 - Farmer CLI (plot, farm)
 - Node (validator, sync)
@@ -184,7 +184,7 @@ curl http://localhost:8080/balance/<YOUR_ADDRESS>
 
 ---
 
-## 🗺️ Roadmap
+##  Roadmap
 
 ### **Phase 1: Testnet Hardening** (Current)
 - [x] Multi-node sync
@@ -208,7 +208,7 @@ curl http://localhost:8080/balance/<YOUR_ADDRESS>
 
 ---
 
-## 📚 Documentation
+##  Documentation
 
 - **README.md** - Quick start
 - **START-HERE.md** - Navigation
@@ -218,7 +218,7 @@ curl http://localhost:8080/balance/<YOUR_ADDRESS>
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 **Built from scratch in one session:**
 - Chia Network (PoSpace+Time inspiration)
@@ -228,7 +228,7 @@ curl http://localhost:8080/balance/<YOUR_ADDRESS>
 
 ---
 
-## 📝 Technical Specifications
+##  Technical Specifications
 
 **Chain:**
 - Chain ID: 1616
@@ -252,7 +252,7 @@ curl http://localhost:8080/balance/<YOUR_ADDRESS>
 
 ---
 
-## 🎯 How to Contribute
+##  How to Contribute
 
 **Areas we need help:**
 - Testing multi-node sync
@@ -270,7 +270,7 @@ curl http://localhost:8080/balance/<YOUR_ADDRESS>
 
 ---
 
-## ⚠️ Disclaimer
+##  Disclaimer
 
 **EXPERIMENTAL SOFTWARE - USE AT YOUR OWN RISK**
 
@@ -282,7 +282,7 @@ curl http://localhost:8080/balance/<YOUR_ADDRESS>
 
 ---
 
-## 🌾 Join Archivas Testnet
+##  Join Archivas Testnet
 
 **Network is LIVE!**
 

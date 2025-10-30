@@ -357,7 +357,7 @@ func (e *Explorer) handlePeersPage(w http.ResponseWriter, r *http.Request) {
 
 func (e *Explorer) handleTransaction(w http.ResponseWriter, r *http.Request) {
 	txHash := r.URL.Path[len("/tx/"):]
-	
+
 	tmpl := template.Must(template.New("tx").Parse(`
 <!DOCTYPE html>
 <html>

@@ -72,14 +72,14 @@ func main() {
 	genesisPath := flag.String("genesis", "", "Genesis file path (required on first start)")
 	networkID := flag.String("network-id", "archivas-devnet-v3", "Network ID")
 	bootnodes := flag.String("bootnodes", "", "Comma-separated bootnode addresses")
-	
+
 	// Gossip flags
 	enableGossip := flag.Bool("enable-gossip", true, "Enable automatic peer discovery via gossip")
 	gossipInterval := flag.Duration("gossip-interval", 60*time.Second, "Interval between gossip broadcasts")
 	maxPeers := flag.Int("max-peers", 20, "Maximum number of peer connections")
 	dialsPerMin := flag.Int("gossip-dials-per-min", 5, "Maximum new peer dials per minute")
 	peersFile := flag.String("peers-file", "", "Path to peers.json (default: <db>/peers.json)")
-	
+
 	flag.Parse()
 
 	log.Println("[startup] Archivas node starting...")
@@ -337,7 +337,7 @@ func main() {
 	if *p2pAddr != "" {
 		log.Printf("[p2p] Starting P2P listener on %s", *p2pAddr)
 		p2pNet = p2p.NewNetwork(*p2pAddr, nodeState)
-		
+
 		// Configure gossip
 		p2pNet.SetGossipConfig(p2p.GossipConfig{
 			NetworkID:      *networkID,
@@ -346,7 +346,7 @@ func main() {
 			MaxPeers:       *maxPeers,
 			DialsPerMinute: *dialsPerMin,
 		})
-		
+
 		// Set up peer persistence
 		peerStorePath := *peersFile
 		if peerStorePath == "" {
@@ -359,7 +359,7 @@ func main() {
 			p2pNet.SetPeerStore(peerStore)
 			log.Printf("[p2p] Peer store: %s", peerStorePath)
 		}
-		
+
 		if err := p2pNet.Start(); err != nil {
 			log.Fatalf("[p2p] Failed to start P2P: %v", err)
 		}
@@ -673,17 +673,17 @@ func (ns *NodeState) GetHealthStats() interface{} {
 	if ns.Health == nil {
 		return map[string]interface{}{"status": "not initialized"}
 	}
-	
+
 	stats := ns.Health.GetStats()
-	
+
 	return map[string]interface{}{
-		"uptime":           stats.Uptime.String(),
-		"uptimeSeconds":    int(stats.Uptime.Seconds()),
-		"totalBlocks":      stats.TotalBlocks,
-		"avgBlockTime":     stats.AverageBlockTime.String(),
-		"avgBlockSeconds":  stats.AverageBlockTime.Seconds(),
-		"blocksPerHour":    stats.BlocksPerHour,
-		"lastBlockTime":    stats.LastBlockTime.Format(time.RFC3339),
+		"uptime":          stats.Uptime.String(),
+		"uptimeSeconds":   int(stats.Uptime.Seconds()),
+		"totalBlocks":     stats.TotalBlocks,
+		"avgBlockTime":    stats.AverageBlockTime.String(),
+		"avgBlockSeconds": stats.AverageBlockTime.Seconds(),
+		"blocksPerHour":   stats.BlocksPerHour,
+		"lastBlockTime":   stats.LastBlockTime.Format(time.RFC3339),
 	}
 }
 
@@ -738,12 +738,12 @@ func (ns *NodeState) VerifyAndApplyBlock(blockJSON json.RawMessage) error {
 	// Add block to chain
 	ns.Chain = append(ns.Chain, block)
 	ns.CurrentHeight = block.Height
-	
+
 	// Update Prometheus metrics
 	metrics.TipHeight.Set(float64(ns.CurrentHeight))
 	metrics.BlocksTotal.Inc()
 	metrics.Difficulty.Set(float64(block.Difficulty))
-	
+
 	// Record block for health tracking
 	if ns.Health != nil {
 		ns.Health.RecordBlock()
