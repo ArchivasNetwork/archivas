@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/iljanemesis/archivas/config"
 	"github.com/iljanemesis/archivas/pospace"
 )
 
