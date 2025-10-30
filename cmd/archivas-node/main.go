@@ -26,9 +26,10 @@ type Block struct {
 	Height        uint64
 	TimestampUnix int64
 	PrevHash      [32]byte
+	Challenge     [32]byte               // The challenge used to win this block
 	Txs           []ledger.Transaction
-	Proof         *pospace.Proof // Proof-of-Space
-	FarmerAddr    string         // Address to receive block reward
+	Proof         *pospace.Proof         // Proof-of-Space
+	FarmerAddr    string                 // Address to receive block reward
 }
 
 // NodeState holds the entire node state
@@ -157,6 +158,7 @@ func main() {
 			Height:        0,
 			TimestampUnix: gen.Timestamp, // Use FIXED timestamp from genesis.json!
 			PrevHash:      [32]byte{},
+			Challenge:     genesisChallenge,
 			Txs:           nil,
 			Proof:         nil,
 			FarmerAddr:    "",
@@ -450,11 +452,12 @@ func (ns *NodeState) AcceptBlock(proof *pospace.Proof, farmerAddr string, farmer
 		prevHash = hashBlock(&prevBlock)
 	}
 
-	// Create new block
+	// Create new block  
 	newBlock := Block{
 		Height:        nextHeight,
 		TimestampUnix: time.Now().Unix(),
 		PrevHash:      prevHash,
+		Challenge:     ns.CurrentChallenge, // Include the challenge used to win
 		Txs:           allTxs,
 		Proof:         proof,
 		FarmerAddr:    farmerAddr,
@@ -631,10 +634,9 @@ func (ns *NodeState) VerifyAndApplyBlock(blockJSON json.RawMessage) error {
 		}
 	}
 	
-	// Verify PoSpace proof if present
+	// Verify PoSpace proof if present (use challenge from block header!)
 	if block.Proof != nil {
-		challenge := ns.CurrentChallenge
-		if err := ns.Consensus.VerifyProofOfSpace(block.Proof, challenge); err != nil {
+		if err := ns.Consensus.VerifyProofOfSpace(block.Proof, block.Challenge); err != nil {
 			return fmt.Errorf("invalid PoSpace proof: %w", err)
 		}
 	}
@@ -687,6 +689,7 @@ func hashBlock(b *Block) [32]byte {
 	fmt.Fprintf(h, "%d", b.Height)
 	fmt.Fprintf(h, "%d", b.TimestampUnix)
 	h.Write(b.PrevHash[:])
+	h.Write(b.Challenge[:]) // Include challenge in hash
 	if b.Proof != nil {
 		h.Write(b.Proof.Hash[:])
 	}
