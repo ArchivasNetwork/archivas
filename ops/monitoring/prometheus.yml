@@ -1,0 +1,28 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: 'archivas-nodes'
+    static_configs:
+      - targets:
+          - '57.129.148.132:8080'
+          - '72.251.11.191:8080'
+        labels:
+          network: 'archivas-devnet-v3'
+
+  - job_name: 'archivas-timelords'
+    static_configs:
+      - targets:
+          - '57.129.148.132:9101'
+          - '72.251.11.191:9101'
+        labels:
+          network: 'archivas-devnet-v3'
+
+  - job_name: 'archivas-farmers'
+    static_configs:
+      - targets:
+          - '57.129.148.132:9102'
+        labels:
+          network: 'archivas-devnet-v3'
+

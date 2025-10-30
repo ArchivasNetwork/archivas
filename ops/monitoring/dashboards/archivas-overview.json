@@ -1,0 +1,99 @@
+{
+  "title": "Archivas Network Overview",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Tip Height",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "archivas_tip_height",
+          "legendFormat": "{{instance}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0}
+    },
+    {
+      "id": 2,
+      "title": "Connected Peers",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "archivas_peer_count",
+          "legendFormat": "{{instance}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 6, "x": 6, "y": 0}
+    },
+    {
+      "id": 3,
+      "title": "Difficulty",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "archivas_difficulty",
+          "legendFormat": "{{instance}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0}
+    },
+    {
+      "id": 4,
+      "title": "Blocks Mined",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "archivas_blocks_total",
+          "legendFormat": "{{instance}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0}
+    },
+    {
+      "id": 5,
+      "title": "Block Height Over Time",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "archivas_tip_height",
+          "legendFormat": "{{instance}}"
+        }
+      ],
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 8}
+    },
+    {
+      "id": 6,
+      "title": "Peer Count Over Time",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "archivas_peer_count",
+          "legendFormat": "Connected - {{instance}}"
+        },
+        {
+          "expr": "archivas_peers_known",
+          "legendFormat": "Known - {{instance}}"
+        }
+      ],
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 8}
+    },
+    {
+      "id": 7,
+      "title": "RPC Requests by Endpoint",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "rate(archivas_rpc_requests_total[1m])",
+          "legendFormat": "{{endpoint}} - {{instance}}"
+        }
+      ],
+      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 17}
+    }
+  ],
+  "refresh": "5s",
+  "time": {"from": "now-1h", "to": "now"},
+  "timezone": "browser",
+  "schemaVersion": 27,
+  "version": 1
+}
+
