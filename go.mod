@@ -9,6 +9,8 @@ require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0
 	github.com/dgraph-io/badger/v3 v3.2103.5
 	github.com/prometheus/client_golang v1.23.2
+	github.com/tyler-smith/go-bip39 v1.1.0
+	golang.org/x/crypto v0.41.0
 )
 
 require (
