@@ -27,7 +27,7 @@ type NodeRegistration struct {
 	PubKey    string `json:"pubkey"`    // hex public key
 	Nonce     uint64 `json:"nonce"`     // anti-replay
 	Signature string `json:"signature"` // signature of registration
-	
+
 	// Updated by heartbeats
 	TipHeight uint64    `json:"tipHeight,omitempty"`
 	PeerCount int       `json:"peerCount,omitempty"`
@@ -35,8 +35,8 @@ type NodeRegistration struct {
 }
 
 type Registry struct {
-	mu sync.RWMutex
-	nodes map[string]*NodeRegistration // key = p2pAddr
+	mu        sync.RWMutex
+	nodes     map[string]*NodeRegistration // key = p2pAddr
 	networkID string
 }
 
@@ -58,6 +58,7 @@ func main() {
 	http.HandleFunc("/peers", registry.handlePeers)
 	http.HandleFunc("/nodes", registry.handleNodes)
 	http.HandleFunc("/health", registry.handleHealth)
+	http.HandleFunc("/", registry.handleUI)
 
 	log.Printf("📋 Archivas Node Registry")
 	log.Printf("   Network: %s", *networkID)
@@ -258,3 +259,96 @@ func (r *Registry) cleanupLoop() {
 	}
 }
 
+func (r *Registry) handleUI(w http.ResponseWriter, req *http.Request) {
+	r.mu.RLock()
+	activeNodes := make([]*NodeRegistration, 0)
+	now := time.Now()
+	for _, node := range r.nodes {
+		if now.Sub(node.LastSeen) < HeartbeatTTL {
+			activeNodes = append(activeNodes, node)
+		}
+	}
+	r.mu.RUnlock()
+
+	html := `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Archivas Node Registry</title>
+    <meta http-equiv="refresh" content="30">
+    <style>
+        body { font-family: 'Courier New', monospace; max-width: 1200px; margin: 0 auto; padding: 20px; background: #1a1a1a; color: #00ff00; }
+        h1 { color: #00ff00; text-align: center; }
+        .stats { display: flex; justify-content: space-around; margin: 30px 0; }
+        .stat { background: #2a2a2a; padding: 20px; border: 1px solid #00ff00; text-align: center; flex: 1; margin: 0 10px; }
+        .stat-value { font-size: 32px; font-weight: bold; color: #00ff00; }
+        .stat-label { font-size: 12px; color: #888; margin-top: 5px; }
+        .node { background: #2a2a2a; border: 1px solid #00ff00; padding: 15px; margin: 10px 0; }
+        .node-header { font-size: 18px; font-weight: bold; margin-bottom: 10px; }
+        .node-detail { margin: 5px 0; font-size: 14px; }
+        .label { color: #888; }
+        .online { color: #00ff00; }
+        .refresh { text-align: center; font-size: 12px; color: #666; margin-top: 30px; }
+        a { color: #00ff00; }
+    </style>
+</head>
+<body>
+    <h1>🌾 Archivas Node Registry</h1>
+    
+    <div class="stats">
+        <div class="stat">
+            <div class="stat-value">` + fmt.Sprintf("%d", len(activeNodes)) + `</div>
+            <div class="stat-label">ACTIVE NODES</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value">` + r.networkID + `</div>
+            <div class="stat-label">NETWORK ID</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value">` + fmt.Sprintf("%d", len(r.nodes)) + `</div>
+            <div class="stat-label">TOTAL REGISTERED</div>
+        </div>
+    </div>
+
+    <h2>📡 Active Nodes</h2>
+`
+
+	if len(activeNodes) == 0 {
+		html += `<p style="text-align: center; color: #666;">No active nodes (waiting for heartbeats...)</p>`
+	} else {
+		for _, node := range activeNodes {
+			timeSince := now.Sub(node.LastSeen).Round(time.Second)
+			html += `
+    <div class="node">
+        <div class="node-header">` + node.Address + ` <span class="online">●</span></div>
+        <div class="node-detail"><span class="label">P2P:</span> ` + node.P2PAddr + `</div>
+        <div class="node-detail"><span class="label">RPC:</span> ` + node.RPCAddr + `</div>
+`
+			if node.TipHeight > 0 {
+				html += `        <div class="node-detail"><span class="label">Height:</span> ` + fmt.Sprintf("%d", node.TipHeight) + `</div>`
+			}
+			if node.PeerCount > 0 {
+				html += `        <div class="node-detail"><span class="label">Peers:</span> ` + fmt.Sprintf("%d", node.PeerCount) + `</div>`
+			}
+			html += `        <div class="node-detail"><span class="label">Last Seen:</span> ` + fmt.Sprintf("%v ago", timeSince) + `</div>
+    </div>
+`
+		}
+	}
+
+	html += `
+    <div class="refresh">
+        <p>Auto-refresh every 30 seconds | <a href="/nodes">JSON API</a> | <a href="/peers">Peer List</a></p>
+        <p style="margin-top: 20px; font-size: 11px;">
+            <a href="https://github.com/ArchivasNetwork/archivas">GitHub</a> | 
+            <a href="http://57.129.148.132:8082">Block Explorer</a> |
+            <a href="http://57.129.148.132:3000">Grafana</a>
+        </p>
+    </div>
+</body>
+</html>
+`
+
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprint(w, html)
+}
