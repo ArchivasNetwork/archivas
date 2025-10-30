@@ -19,6 +19,7 @@ type NodeState interface {
 	GetStatus() (height uint64, difficulty uint64, tipHash [32]byte)
 	GetCurrentVDF() (seed []byte, iterations uint64, output []byte, hasVDF bool)
 	GetGenesisHash() [32]byte
+	GetPeerCount() int
 }
 
 // FarmingServer extends Server with farming capabilities
@@ -54,6 +55,7 @@ func (s *FarmingServer) Start(addr string) error {
 	
 	// Network endpoints
 	http.HandleFunc("/genesisHash", s.handleGenesisHash)
+	http.HandleFunc("/healthz", s.handleHealthz)
 
 	return http.ListenAndServe(addr, nil)
 }
@@ -240,6 +242,32 @@ func (s *FarmingServer) handleGenesisHash(w http.ResponseWriter, r *http.Request
 		GenesisHash string `json:"genesisHash"`
 	}{
 		GenesisHash: hex.EncodeToString(genesisHash[:]),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleHealthz handles GET /healthz
+func (s *FarmingServer) handleHealthz(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	height, difficulty, _ := s.nodeState.GetStatus()
+	peerCount := s.nodeState.GetPeerCount()
+
+	response := struct {
+		OK         bool   `json:"ok"`
+		Height     uint64 `json:"height"`
+		Difficulty uint64 `json:"difficulty"`
+		Peers      int    `json:"peers"`
+	}{
+		OK:         true,
+		Height:     height,
+		Difficulty: difficulty,
+		Peers:      peerCount,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

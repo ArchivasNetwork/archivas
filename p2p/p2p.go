@@ -29,6 +29,7 @@ type Network struct {
 	nodeHandler NodeHandler
 	listenAddr  string
 	syncState   *SyncState
+	peerStore   PeerStore
 }
 
 // NodeHandler interface for node callbacks
@@ -49,6 +50,27 @@ func NewNetwork(listenAddr string, handler NodeHandler) *Network {
 		nodeHandler: handler,
 		listenAddr:  listenAddr,
 		syncState:   NewSyncState(),
+		peerStore:   nil, // Will be set via SetPeerStore
+	}
+}
+
+// SetPeerStore sets the peer store for persistence
+func (n *Network) SetPeerStore(store PeerStore) {
+	n.Lock()
+	defer n.Unlock()
+	n.peerStore = store
+	
+	// Auto-dial stored peers
+	if store != nil {
+		go func() {
+			time.Sleep(2 * time.Second)
+			peers, _ := store.List()
+			for _, addr := range peers {
+				if addr != "" {
+					n.ConnectPeer(addr)
+				}
+			}
+		}()
 	}
 }
 
@@ -97,9 +119,14 @@ func (n *Network) ConnectPeer(address string) error {
 	n.Lock()
 	n.peers[address] = peer
 	peerCount := len(n.peers)
+	
+	// Persist to peer store
+	if n.peerStore != nil {
+		n.peerStore.Add(address)
+	}
 	n.Unlock()
 
-	log.Printf("[p2p] connected to peer %s (total peers: %d)", address, peerCount)
+	log.Printf("[p2p] connected to peer %s (total peers: %d, persisted)", address, peerCount)
 
 	// Start handling messages from this peer
 	go n.handlePeer(peer)
@@ -148,8 +175,11 @@ func (n *Network) handlePeer(peer *Peer) {
 		peer.Conn.Close()
 		n.Lock()
 		delete(n.peers, peer.Address)
+		peerCount := len(n.peers)
 		n.Unlock()
-		log.Printf("[p2p] peer %s disconnected", peer.Address)
+		
+		// Don't remove from store on disconnect (will retry later)
+		log.Printf("[p2p] peer %s disconnected (remaining peers: %d)", peer.Address, peerCount)
 	}()
 
 	for {

@@ -613,6 +613,14 @@ func (ns *NodeState) GetGenesisHash() [32]byte {
 	return ns.GenesisHash
 }
 
+// GetPeerCount returns number of connected peers
+func (ns *NodeState) GetPeerCount() int {
+	if ns.P2P == nil {
+		return 0
+	}
+	return ns.P2P.GetPeerCount()
+}
+
 // VerifyAndApplyBlock verifies and applies a block received from a peer
 func (ns *NodeState) VerifyAndApplyBlock(blockJSON json.RawMessage) error {
 	var block Block
