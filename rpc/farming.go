@@ -106,6 +106,7 @@ func (s *FarmingServer) Start(addr string) error {
 	// Developer endpoints
 	http.HandleFunc("/recentBlocks", s.wrapMetrics("/recentBlocks", s.handleRecentBlocks))
 	http.HandleFunc("/block/", s.wrapMetrics("/block", s.handleBlockByHeight))
+	http.HandleFunc("/version", s.wrapMetrics("/version", s.handleVersion))
 	
 	// Metrics endpoint
 	http.Handle("/metrics", promhttp.Handler())
@@ -541,4 +542,27 @@ func (s *FarmingServer) handleBlockByHeight(w http.ResponseWriter, r *http.Reque
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(block)
+}
+
+// handleVersion handles GET /version
+func (s *FarmingServer) handleVersion(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	response := struct {
+		Version   string `json:"version"`
+		Commit    string `json:"commit"`
+		Network   string `json:"network"`
+		Consensus string `json:"consensus"`
+	}{
+		Version:   "v0.5.0-alpha",
+		Commit:    "dev", // Would be replaced with git commit hash in production
+		Network:   "archivas-devnet-v3",
+		Consensus: "Proof-of-Space-and-Time",
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
