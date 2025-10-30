@@ -447,10 +447,7 @@ func (s *FarmingServer) handleFaucet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add to mempool
-	if err := s.mempool.Add(&tx); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to add to mempool: %v", err), http.StatusInternalServerError)
-		return
-	}
+	s.mempool.Add(tx)
 
 	// Update rate limit
 	s.faucetMutex.Lock()
