@@ -6,11 +6,15 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sync"
+	"time"
 
+	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/iljanemesis/archivas/ledger"
 	"github.com/iljanemesis/archivas/mempool"
 	"github.com/iljanemesis/archivas/metrics"
 	"github.com/iljanemesis/archivas/pospace"
+	"github.com/iljanemesis/archivas/wallet"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -28,18 +32,47 @@ type NodeState interface {
 
 // FarmingServer extends Server with farming capabilities
 type FarmingServer struct {
-	worldState *ledger.WorldState
-	mempool    *mempool.Mempool
-	nodeState  NodeState
+	worldState    *ledger.WorldState
+	mempool       *mempool.Mempool
+	nodeState     NodeState
+	faucetEnabled bool
+	faucetKey     []byte
+	faucetAddress string
+	faucetLimit   map[string]time.Time // IP -> last drip time
+	faucetMutex   sync.Mutex
 }
 
 // NewFarmingServer creates a new farming-enabled RPC server
 func NewFarmingServer(ws *ledger.WorldState, mp *mempool.Mempool, ns NodeState) *FarmingServer {
 	return &FarmingServer{
-		worldState: ws,
-		mempool:    mp,
-		nodeState:  ns,
+		worldState:    ws,
+		mempool:       mp,
+		nodeState:     ns,
+		faucetEnabled: false,
+		faucetLimit:   make(map[string]time.Time),
 	}
+}
+
+// EnableFaucet enables the built-in faucet with a funding private key
+func (s *FarmingServer) EnableFaucet(privKeyHex string) error {
+	privKeyBytes, err := hex.DecodeString(privKeyHex)
+	if err != nil || len(privKeyBytes) != 32 {
+		return fmt.Errorf("invalid private key: must be 32 bytes hex")
+	}
+
+	priv := secp256k1.PrivKeyFromBytes(privKeyBytes)
+	pubKey := priv.PubKey().SerializeCompressed()
+	address, err := wallet.PubKeyToAddress(pubKey)
+	if err != nil {
+		return fmt.Errorf("failed to derive address: %w", err)
+	}
+
+	s.faucetKey = privKeyBytes
+	s.faucetAddress = address
+	s.faucetEnabled = true
+
+	log.Printf("[faucet] enabled with address %s", address)
+	return nil
 }
 
 // Start starts the farming RPC server
@@ -62,6 +95,11 @@ func (s *FarmingServer) Start(addr string) error {
 	http.HandleFunc("/healthz", s.wrapMetrics("/healthz", s.handleHealthz))
 	http.HandleFunc("/peers", s.wrapMetrics("/peers", s.handlePeers))
 	http.HandleFunc("/health", s.wrapMetrics("/health", s.handleHealthDetailed))
+	
+	// Faucet endpoint (if enabled)
+	if s.faucetEnabled {
+		http.HandleFunc("/faucet", s.wrapMetrics("/faucet", s.handleFaucet))
+	}
 	
 	// Metrics endpoint
 	http.Handle("/metrics", promhttp.Handler())
@@ -341,3 +379,98 @@ func (s *FarmingServer) handleHealthDetailed(w http.ResponseWriter, r *http.Requ
 	json.NewEncoder(w).Encode(response)
 }
 
+
+// handleFaucet handles GET /faucet?address=<addr>
+func (s *FarmingServer) handleFaucet(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if !s.faucetEnabled {
+		http.Error(w, "Faucet not enabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	address := r.URL.Query().Get("address")
+	if address == "" {
+		http.Error(w, "Missing address parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Validate address format
+	if len(address) < 10 || address[:4] != "arcv" {
+		http.Error(w, "Invalid Archivas address format", http.StatusBadRequest)
+		return
+	}
+
+	// Rate limit by IP (1 drip per hour)
+	clientIP := r.RemoteAddr
+	s.faucetMutex.Lock()
+	lastDrip, exists := s.faucetLimit[clientIP]
+	if exists && time.Since(lastDrip) < time.Hour {
+		s.faucetMutex.Unlock()
+		remaining := time.Hour - time.Since(lastDrip)
+		http.Error(w, fmt.Sprintf("Rate limited. Try again in %v", remaining.Round(time.Minute)), http.StatusTooManyRequests)
+		return
+	}
+	s.faucetMutex.Unlock()
+
+	// Get current nonce
+	balance := s.worldState.GetBalance(s.faucetAddress)
+	nonce := s.worldState.GetNonce(s.faucetAddress)
+
+	// Check faucet has funds
+	dripAmount := int64(2000000000) // 20 RCHV
+	fee := int64(100000)            // 0.001 RCHV
+	if balance < dripAmount+fee {
+		http.Error(w, fmt.Sprintf("Faucet empty (balance: %.8f RCHV)", float64(balance)/100000000.0), http.StatusServiceUnavailable)
+		return
+	}
+
+	// Create and sign transaction
+	priv := secp256k1.PrivKeyFromBytes(s.faucetKey)
+	pubKey := priv.PubKey().SerializeCompressed()
+
+	tx := ledger.Transaction{
+		From:         s.faucetAddress,
+		To:           address,
+		Amount:       dripAmount,
+		Fee:          fee,
+		Nonce:        nonce,
+		SenderPubKey: pubKey,
+	}
+
+	if err := wallet.SignTransaction(&tx, s.faucetKey); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to sign: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Add to mempool
+	if err := s.mempool.Add(&tx); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to add to mempool: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Update rate limit
+	s.faucetMutex.Lock()
+	s.faucetLimit[clientIP] = time.Now()
+	s.faucetMutex.Unlock()
+
+	log.Printf("[faucet] 💧 Dripped 20 RCHV to %s (IP: %s)", address, clientIP)
+
+	// Success response
+	response := struct {
+		Success bool   `json:"success"`
+		Message string `json:"message"`
+		Amount  string `json:"amount"`
+		TxHash  string `json:"txHash,omitempty"`
+	}{
+		Success: true,
+		Message: "20 RCHV sent! Should arrive in next block (~20 seconds)",
+		Amount:  "20.00000000 RCHV",
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
