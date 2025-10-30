@@ -59,6 +59,8 @@ type NodeState struct {
 	NetworkID   string
 	// Health tracking
 	Health *health.ChainHealth
+	// Reorg detection (v0.5.0)
+	ReorgDetector *consensus.ReorgDetector
 	// VDF state (updated by timelord)
 	VDFSeed       []byte
 	VDFIterations uint64
@@ -329,6 +331,7 @@ func main() {
 		StateStore:       stateStore,
 		MetaStore:        metaStore,
 		Health:           health.NewChainHealth(),
+		ReorgDetector:    consensus.NewReorgDetector(),
 		GenesisHash:      genesisHash,
 		NetworkID:        *networkID,
 	}
