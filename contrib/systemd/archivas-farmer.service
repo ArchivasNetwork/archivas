@@ -1,0 +1,30 @@
+[Unit]
+Description=Archivas Farmer
+Documentation=https://github.com/ArchivasNetwork/archivas
+After=archivas-node.service
+Requires=archivas-node.service
+
+[Service]
+Type=simple
+User=archivas
+Group=archivas
+WorkingDirectory=/opt/archivas
+
+# IMPORTANT: Set your farmer private key in /etc/archivas/farmer.env
+EnvironmentFile=/etc/archivas/farmer.env
+
+ExecStart=/opt/archivas/archivas-farmer farm \
+  --plots /opt/archivas/plots \
+  --node http://localhost:8080 \
+  --farmer-privkey ${FARMER_PRIVKEY}
+
+Restart=always
+RestartSec=5
+
+# Logging
+StandardOutput=append:/var/log/archivas/farmer.log
+StandardError=append:/var/log/archivas/farmer-error.log
+
+[Install]
+WantedBy=multi-user.target
+

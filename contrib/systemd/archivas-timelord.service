@@ -1,0 +1,26 @@
+[Unit]
+Description=Archivas Timelord (VDF Computer)
+Documentation=https://github.com/ArchivasNetwork/archivas
+After=archivas-node.service
+Requires=archivas-node.service
+
+[Service]
+Type=simple
+User=archivas
+Group=archivas
+WorkingDirectory=/opt/archivas
+
+ExecStart=/opt/archivas/archivas-timelord \
+  --node http://localhost:8080 \
+  --step 500
+
+Restart=always
+RestartSec=5
+
+# Logging
+StandardOutput=append:/var/log/archivas/timelord.log
+StandardError=append:/var/log/archivas/timelord-error.log
+
+[Install]
+WantedBy=multi-user.target
+

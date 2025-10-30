@@ -1,0 +1,31 @@
+[Unit]
+Description=Archivas Node
+Documentation=https://github.com/ArchivasNetwork/archivas
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=archivas
+Group=archivas
+WorkingDirectory=/opt/archivas
+
+ExecStart=/opt/archivas/archivas-node \
+  --rpc :8080 \
+  --p2p :9090 \
+  --db /opt/archivas/data \
+  --genesis /opt/archivas/genesis/devnet.genesis.json \
+  --network-id archivas-devnet-v3 \
+  --bootnodes 57.129.148.132:9090,72.251.11.191:9090
+
+Restart=always
+RestartSec=5
+LimitNOFILE=65535
+
+# Logging
+StandardOutput=append:/var/log/archivas/node.log
+StandardError=append:/var/log/archivas/node-error.log
+
+[Install]
+WantedBy=multi-user.target
+

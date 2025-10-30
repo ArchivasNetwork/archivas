@@ -1,0 +1,30 @@
+# Data directories
+data/
+logs/
+plots/
+plots-test/
+
+# Build artifacts
+archivas-node
+archivas-farmer
+archivas-timelord
+archivas-wallet
+bin/
+build/
+
+# Development
+.git/
+.github/
+.vscode/
+*.log
+*.db
+
+# Documentation (not needed in image)
+docs/gitbook/
+MILESTONE*.md
+SESSION*.md
+*.pdf
+
+# Test files
+test-*
+
