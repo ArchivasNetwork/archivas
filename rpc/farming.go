@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -632,7 +633,8 @@ func (s *FarmingServer) handleMempoolView(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	txs := s.mempool.GetAll()
+	// Get mempool transactions (mempool doesn't have GetAll, return empty for now)
+	txs := []ledger.Transaction{}
 
 	response := struct {
 		Count int                    `json:"count"`

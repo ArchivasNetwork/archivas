@@ -2,12 +2,9 @@ package main
 
 import (
 	"bufio"
-	"bytes"
-	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,7 +12,6 @@ import (
 	"syscall"
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
-	"github.com/iljanemesis/archivas/ledger"
 	"github.com/iljanemesis/archivas/wallet"
 	"golang.org/x/term"
 )
