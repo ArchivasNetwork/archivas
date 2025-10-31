@@ -527,35 +527,16 @@ func (ns *NodeState) AcceptBlock(proof *pospace.Proof, farmerAddr string, farmer
 	newBlockHash := hashBlock(&newBlock)
 	ns.CurrentChallenge = consensus.GenerateChallenge(newBlockHash, nextHeight+1)
 
-	// Update difficulty (every block for now, could be less frequent)
-	if len(ns.Chain) >= 2 {
-		recentTimes := make([]int64, 0, 10)
-		startIdx := len(ns.Chain) - 10
-		if startIdx < 0 {
-			startIdx = 0
-		}
-		for i := startIdx; i < len(ns.Chain); i++ {
-			recentTimes = append(recentTimes, ns.Chain[i].TimestampUnix)
-		}
-			// Calculate average block time
-			var avgBlockTime time.Duration
-			if len(recentTimes) > 1 {
-				var total int64
-				for i := 1; i < len(recentTimes); i++ {
-					timeDiff := recentTimes[i] - recentTimes[i-1]
-					total += timeDiff
-				}
-				avgBlockTime = time.Duration(total/int64(len(recentTimes)-1)) * time.Second
+		// TEMPORARY: Aggressive difficulty drop to get blocks flowing
+		// Drop difficulty by 50% every block until it reaches 20M
+		if ns.Consensus.DifficultyTarget > 20_000_000 {
+			oldDiff := ns.Consensus.DifficultyTarget
+			ns.Consensus.DifficultyTarget = ns.Consensus.DifficultyTarget / 2
+			if ns.Consensus.DifficultyTarget < 20_000_000 {
+				ns.Consensus.DifficultyTarget = 20_000_000
 			}
-			
-			// Use EMA retargeting for smooth adjustment
-			config := consensus.DefaultRetargetConfig()
-			newDiff := consensus.RetargetDifficulty(ns.Consensus.DifficultyTarget, avgBlockTime, config)
-			ns.Consensus.DifficultyTarget = newDiff
-			
-			log.Printf("[retarget] Observed block time: %v, Target: %v, New difficulty: %d",
-				avgBlockTime, config.BlockTimeTarget, newDiff)
-	}
+			log.Printf("[difficulty] Dropping difficulty: %d → %d", oldDiff, ns.Consensus.DifficultyTarget)
+		}
 
 	// PERSIST TO DISK
 	log.Println("[storage] Persisting block and state...")
