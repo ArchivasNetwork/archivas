@@ -13,10 +13,16 @@ type Consensus struct {
 	TargetBlockTime  time.Duration
 }
 
+const (
+	// InitialDifficulty in new domain (1e9-1e12)
+	// Start at 500 billion (middle of range)
+	InitialDifficulty = 500_000_000_000
+)
+
 // NewConsensus creates a new consensus instance
 func NewConsensus() *Consensus {
 	return &Consensus{
-		DifficultyTarget: 1125899906842624, // 2^50 initial difficulty
+		DifficultyTarget: InitialDifficulty,
 		TargetBlockTime:  20 * time.Second,
 	}
 }

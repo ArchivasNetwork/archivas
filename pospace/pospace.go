@@ -187,7 +187,14 @@ func (p *PlotFile) CheckChallenge(challenge [32]byte, difficultyTarget uint64) (
 	return bestProof, nil
 }
 
+const (
+	// QMAX defines the maximum quality value (1 trillion)
+	// Quality and Difficulty operate in the same domain: [0, QMAX]
+	QMAX = 1_000_000_000_000
+)
+
 // computeQuality computes the quality value for a challenge/hash pair
+// Returns value in range [0, QMAX] for consistent comparison with difficulty
 func computeQuality(challenge [32]byte, hash [32]byte) uint64 {
 	// Mix challenge and hash
 	h := sha256.New()
@@ -195,8 +202,13 @@ func computeQuality(challenge [32]byte, hash [32]byte) uint64 {
 	h.Write(hash[:])
 	result := h.Sum(nil)
 
-	// Take first 8 bytes as uint64 (lower is better)
-	return binary.LittleEndian.Uint64(result[:8])
+	// Take first 8 bytes as uint64, then normalize to QMAX domain
+	raw := binary.BigEndian.Uint64(result[:8])
+	
+	// Normalize to [0, QMAX] range
+	quality := raw % QMAX
+	
+	return quality
 }
 
 // VerifyProof verifies that a proof is valid for a given challenge
