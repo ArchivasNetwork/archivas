@@ -18,11 +18,11 @@ type RetargetConfig struct {
 func DefaultRetargetConfig() RetargetConfig {
 	return RetargetConfig{
 		BlockTimeTarget:     30 * time.Second,
-		RetargetInterval:    20,
-		Alpha:               0.25,
-		MaxIncrease:         1.5,
-		MaxDecrease:         0.67,
-		MinDifficulty:       1_000_000,
+		RetargetInterval:    10, // Adjust every 10 blocks (faster)
+		Alpha:               0.45, // More responsive (was 0.25)
+		MaxIncrease:         1.25, // Slower increase (25%)
+		MaxDecrease:         0.30, // AGGRESSIVE decrease (70% drop allowed!)
+		MinDifficulty:       10_000_000, // Floor at 10M (not 1M)
 	}
 }
 

@@ -537,16 +537,24 @@ func (ns *NodeState) AcceptBlock(proof *pospace.Proof, farmerAddr string, farmer
 		for i := startIdx; i < len(ns.Chain); i++ {
 			recentTimes = append(recentTimes, ns.Chain[i].TimestampUnix)
 		}
-		// Calculate average block time
-		var avgBlockTime time.Duration
-		if len(recentTimes) > 1 {
-			var total int64
-			for _, t := range recentTimes {
-				total += t
+			// Calculate average block time
+			var avgBlockTime time.Duration
+			if len(recentTimes) > 1 {
+				var total int64
+				for i := 1; i < len(recentTimes); i++ {
+					timeDiff := recentTimes[i] - recentTimes[i-1]
+					total += timeDiff
+				}
+				avgBlockTime = time.Duration(total/int64(len(recentTimes)-1)) * time.Second
 			}
-			avgBlockTime = time.Duration(total/int64(len(recentTimes))) * time.Second
-		}
-		ns.Consensus.UpdateDifficulty(avgBlockTime)
+			
+			// Use EMA retargeting for smooth adjustment
+			config := consensus.DefaultRetargetConfig()
+			newDiff := consensus.RetargetDifficulty(ns.Consensus.DifficultyTarget, avgBlockTime, config)
+			ns.Consensus.DifficultyTarget = newDiff
+			
+			log.Printf("[retarget] Observed block time: %v, Target: %v, New difficulty: %d",
+				avgBlockTime, config.BlockTimeTarget, newDiff)
 	}
 
 	// PERSIST TO DISK
