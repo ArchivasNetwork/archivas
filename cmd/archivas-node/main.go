@@ -429,14 +429,35 @@ func main() {
 	// Heartbeat loop - shows node is alive and waiting for blocks
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
+	
+	lastBlockTime := time.Now()
 
 	for range ticker.C {
-		nodeState.RLock()
+		nodeState.Lock()
 		height := nodeState.CurrentHeight
 		difficulty := nodeState.Consensus.DifficultyTarget
 		challenge := nodeState.CurrentChallenge
 		chainLen := len(nodeState.Chain)
-		nodeState.RUnlock()
+		
+		// Check if we got a new block
+		if chainLen > int(height)+1 {
+			lastBlockTime = time.Now()
+		}
+		
+		// Time-based difficulty drop: if no block for 60 seconds, halve difficulty
+		timeSinceBlock := time.Since(lastBlockTime)
+		if timeSinceBlock > 60*time.Second && difficulty > 20_000_000 {
+			oldDiff := difficulty
+			difficulty = difficulty / 2
+			if difficulty < 20_000_000 {
+				difficulty = 20_000_000
+			}
+			nodeState.Consensus.DifficultyTarget = difficulty
+			lastBlockTime = time.Now() // Reset timer
+			log.Printf("[auto-drop] No block for %v, dropping difficulty: %d → %d", timeSinceBlock, oldDiff, difficulty)
+		}
+		
+		nodeState.Unlock()
 
 		log.Printf("[consensus] height=%d difficulty=%d challenge=%x chainLen=%d",
 			height, difficulty, challenge[:8], chainLen)
