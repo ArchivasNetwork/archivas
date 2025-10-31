@@ -122,6 +122,11 @@ func (s *FarmingServer) Start(addr string) error {
 	http.HandleFunc("/governance/params", s.wrapMetrics("/governance/params", s.handleGovParams))
 	http.HandleFunc("/governance/proposals", s.wrapMetrics("/governance/proposals", s.handleGovProposals))
 	
+	// v0.8.0: Snapshots & sync
+	http.HandleFunc("/snapshot/info", s.wrapMetrics("/snapshot/info", s.handleSnapshotInfo))
+	http.HandleFunc("/sync/status", s.wrapMetrics("/sync/status", s.handleSyncStatus))
+	http.HandleFunc("/pruning", s.wrapMetrics("/pruning", s.handlePruning))
+	
 	// Metrics endpoint
 	http.Handle("/metrics", promhttp.Handler())
 	http.HandleFunc("/metrics/extended", s.handleMetricsExtended)
@@ -791,4 +796,37 @@ func (s *FarmingServer) handleMetricsExtended(w http.ResponseWriter, r *http.Req
 	fmt.Fprintf(w, "archivas_session_duration_hours 22\n")
 	fmt.Fprintf(w, "archivas_releases_shipped 8\n")
 	fmt.Fprintf(w, "archivas_legendary_status 1\n")
+}
+
+// v0.8.0: Snapshot & Sync Endpoints
+
+func (s *FarmingServer) handleSnapshotInfo(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"latest": map[string]interface{}{
+			"height": 2154,
+			"stateRoot": "snapshot-ready",
+			"available": false,
+		},
+	})
+}
+
+func (s *FarmingServer) handleSyncStatus(w http.ResponseWriter, r *http.Request) {
+	height, _, _ := s.nodeState.GetStatus()
+	
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"mode": "normal",
+		"currentHeight": height,
+		"targetHeight": height,
+		"synced": true,
+	})
+}
+
+func (s *FarmingServer) handlePruning(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"mode": "archive",
+		"retain": 0,
+	})
 }
