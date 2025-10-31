@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   node:
-    build: .
+    image: ghcr.io/archivasnetwork/archivas:latest
     container_name: archivas-node
     ports:
       - "8080:8080"
@@ -10,6 +10,7 @@ services:
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
+      - ./snapshots:/app/snapshots
     environment:
       - ARCHIVAS_BOOTNODES=57.129.148.132:9090,72.251.11.191:9090
     command: >
@@ -19,37 +20,54 @@ services:
       --genesis /app/genesis.json
       --network-id archivas-devnet-v3
       --bootnodes 57.129.148.132:9090,72.251.11.191:9090
+      --enable-gossip
+      --max-peers 20
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
     networks:
       - archivas
 
   timelord:
-    build: .
+    image: ghcr.io/archivasnetwork/archivas:latest
     container_name: archivas-timelord
     depends_on:
-      - node
+      node:
+        condition: service_healthy
     entrypoint: ["archivas-timelord"]
-    command: ["--node", "http://node:8080", "--step", "500"]
+    command: ["--node", "http://node:8080"]
     restart: unless-stopped
     networks:
       - archivas
 
-  # farmer:
-  #   build: .
-  #   container_name: archivas-farmer
-  #   depends_on:
-  #     - node
-  #   volumes:
-  #     - ./plots:/app/plots
-  #   entrypoint: ["archivas-farmer"]
-  #   command: >
-  #     farm
-  #     --plots /app/plots
-  #     --node http://node:8080
-  #     --farmer-privkey ${FARMER_PRIVKEY}
-  #   restart: unless-stopped
-  #   networks:
-  #     - archivas
+  registry:
+    image: ghcr.io/archivasnetwork/archivas:latest
+    container_name: archivas-registry
+    depends_on:
+      - node
+    ports:
+      - "8088:8088"
+    entrypoint: ["archivas-registry"]
+    command: ["--port", ":8088", "--network-id", "archivas-devnet-v3"]
+    restart: unless-stopped
+    networks:
+      - archivas
+
+  explorer:
+    image: ghcr.io/archivasnetwork/archivas:latest
+    container_name: archivas-explorer
+    depends_on:
+      - node
+    ports:
+      - "8082:8082"
+    entrypoint: ["archivas-explorer"]
+    command: ["--node", "http://node:8080", "--port", ":8082"]
+    restart: unless-stopped
+    networks:
+      - archivas
 
 networks:
   archivas:

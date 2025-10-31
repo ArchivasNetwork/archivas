@@ -1,0 +1,38 @@
+# Archivas Configuration File v0.8.0
+
+[node]
+rpc_listen = ":8080"
+p2p_listen = ":9090"
+db_path = "./data"
+network_id = "archivas-devnet-v3"
+
+[genesis]
+path = "genesis/devnet.genesis.json"
+
+[p2p]
+enable_gossip = true
+max_peers = 20
+gossip_interval = "60s"
+dials_per_minute = 5
+bootnodes = [
+  "57.129.148.132:9090",
+  "72.251.11.191:9090"
+]
+
+[snapshot]
+enabled = false
+interval = "6h"
+output_dir = "./snapshots"
+
+[pruning]
+mode = "default"  # archive | default | light
+retain = 100000   # blocks to keep (light mode)
+
+[security]
+rpc_rate_limit = 60       # requests per minute per IP
+peer_ban_threshold = -20  # ban score threshold
+ban_duration = "30m"
+
+[metrics]
+extended = true
+
