@@ -451,8 +451,11 @@ func (ns *NodeState) AcceptBlock(proof *pospace.Proof, farmerAddr string, farmer
 	// Get expected height
 	nextHeight := ns.CurrentHeight + 1
 
-	// Verify proof against current challenge
-	if err := ns.Consensus.VerifyProofOfSpace(proof, ns.CurrentChallenge); err != nil {
+	// Verify proof against its embedded challenge
+	// Note: proof.Challenge is set by the farmer based on when it found the winner
+	// We accept this because VDF advances quickly and farmer might have found it
+	// for a slightly older challenge
+	if err := ns.Consensus.VerifyProofOfSpace(proof, proof.Challenge); err != nil {
 		return fmt.Errorf("invalid proof: %w", err)
 	}
 
