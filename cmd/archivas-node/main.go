@@ -446,11 +446,11 @@ func main() {
 		
 		// Time-based difficulty drop: if no block for 60 seconds, halve difficulty
 		timeSinceBlock := time.Since(lastBlockTime)
-		if timeSinceBlock > 60*time.Second && difficulty > 20_000_000 {
+		if timeSinceBlock > 60*time.Second && difficulty > 1_000_000 {
 			oldDiff := difficulty
 			difficulty = difficulty / 2
-			if difficulty < 20_000_000 {
-				difficulty = 20_000_000
+			if difficulty < 1_000_000 {
+				difficulty = 1_000_000
 			}
 			nodeState.Consensus.DifficultyTarget = difficulty
 			lastBlockTime = time.Now() // Reset timer
@@ -549,12 +549,12 @@ func (ns *NodeState) AcceptBlock(proof *pospace.Proof, farmerAddr string, farmer
 	ns.CurrentChallenge = consensus.GenerateChallenge(newBlockHash, nextHeight+1)
 
 		// TEMPORARY: Aggressive difficulty drop to get blocks flowing
-		// Drop difficulty by 50% every block until it reaches 20M
-		if ns.Consensus.DifficultyTarget > 20_000_000 {
+		// Drop difficulty by 50% every block until it reaches 1M
+		if ns.Consensus.DifficultyTarget > 1_000_000 {
 			oldDiff := ns.Consensus.DifficultyTarget
 			ns.Consensus.DifficultyTarget = ns.Consensus.DifficultyTarget / 2
-			if ns.Consensus.DifficultyTarget < 20_000_000 {
-				ns.Consensus.DifficultyTarget = 20_000_000
+			if ns.Consensus.DifficultyTarget < 1_000_000 {
+				ns.Consensus.DifficultyTarget = 1_000_000
 			}
 			log.Printf("[difficulty] Dropping difficulty: %d → %d", oldDiff, ns.Consensus.DifficultyTarget)
 		}
