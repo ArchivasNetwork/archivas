@@ -52,7 +52,7 @@ curl http://localhost:8080/metrics/health | jq
 | `archivas_tip_height` | Gauge | Current blockchain height |
 | `archivas_peer_count` | Gauge | Connected peers |
 | `archivas_peers_known` | Gauge | Total known peers (connected + discovered) |
-| `archivas_blocks_sealed_total` | Counter | Blocks sealed by this node |
+| `archivas_blocks_total` | Counter | Total blocks processed |
 | `archivas_difficulty` | Gauge | Current mining difficulty |
 | `archivas_submit_received_total` | Counter | Proof submissions received |
 | `archivas_submit_accepted_total` | Counter | Proof submissions accepted |
@@ -83,13 +83,13 @@ curl http://localhost:8080/metrics/health | jq
 
 ## Grafana Dashboards
 
-### Pre-loaded Dashboard: "Archivas Observability Overview"
+### Pre-loaded Dashboard: "Archivas Network Overview"
 
 **Panels:**
 - Tip Height (stat)
 - Connected Peers (stat)
 - Difficulty (QMAX, stat)
-- Blocks Sealed (stat)
+- Blocks Mined (stat)
 - Watchdogs Firing (stat)
 - Tip Height Over Time (graph)
 - Peer Inventory (graph)
@@ -98,7 +98,7 @@ curl http://localhost:8080/metrics/health | jq
 - RPC Requests by Endpoint (graph)
 - Watchdog Status (table)
 
-**Access:** Grafana → Dashboards → Archivas Observability Overview
+**Access:** Grafana → Dashboards → Archivas Network Overview
 
 ### Creating Custom Dashboards
 
@@ -112,7 +112,7 @@ curl http://localhost:8080/metrics/health | jq
 **Example Queries:**
 ```promql
 # Block production rate
-rate(archivas_blocks_sealed_total[5m])
+rate(archivas_blocks_total[5m])
 
 # Average peers per node
 avg(archivas_peer_count)
