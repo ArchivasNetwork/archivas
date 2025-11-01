@@ -23,7 +23,7 @@ const (
 func NewConsensus() *Consensus {
 	return &Consensus{
 		DifficultyTarget: InitialDifficulty,
-		TargetBlockTime:  20 * time.Second,
+		TargetBlockTime:  25 * time.Second, // v1.0.0: 25s target for stability
 	}
 }
 
@@ -42,32 +42,32 @@ func (c *Consensus) VerifyProofOfSpace(proof *pospace.Proof, challenge [32]byte)
 func (c *Consensus) UpdateDifficulty(actualBlockTime time.Duration) {
 	target := c.TargetBlockTime.Seconds()
 	actual := actualBlockTime.Seconds()
-	
+
 	if actual == 0 || actual < 0.1 {
 		return
 	}
-	
+
 	// Inverted: scale = target / observed
 	// If blocks too fast (2s vs 20s target), scale = 10 (harder!)
 	scale := target / actual
-	
+
 	// Damping factor (alpha = 0.5)
 	alpha := 0.5
 	adjustedScale := 1.0 + alpha*(scale-1.0)
-	
+
 	// Apply to difficulty
 	newDiff := uint64(float64(c.DifficultyTarget) * adjustedScale)
-	
+
 	// Clamp to domain [1e8, 1e12]
-	minDiff := uint64(100_000_000)   // 100M
+	minDiff := uint64(100_000_000)       // 100M
 	maxDiff := uint64(1_000_000_000_000) // 1T (QMAX)
-	
+
 	if newDiff < minDiff {
 		newDiff = minDiff
 	}
 	if newDiff > maxDiff {
 		newDiff = maxDiff
 	}
-	
+
 	c.DifficultyTarget = newDiff
 }
