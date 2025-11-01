@@ -79,8 +79,23 @@ func (s *Server) handleBalance(w http.ResponseWriter, r *http.Request) {
 
 // handleSubmitTx handles POST /submitTx
 func (s *Server) handleSubmitTx(w http.ResponseWriter, r *http.Request) {
+	// v1.1.1: Return 405 with Allow header for non-POST methods
 	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// v1.1.1: Require Content-Type: application/json
+	contentType := r.Header.Get("Content-Type")
+	if contentType != "application/json" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnsupportedMediaType)
+		response := map[string]interface{}{
+			"status":  "error",
+			"message": "Content-Type must be application/json",
+		}
+		json.NewEncoder(w).Encode(response)
 		return
 	}
 
