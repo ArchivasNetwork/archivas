@@ -122,6 +122,7 @@ func (s *FarmingServer) Start(addr string) error {
 	http.HandleFunc("/version", s.wrapMetrics("/version", s.handleVersion))
 	http.HandleFunc("/account/", s.wrapMetrics("/account", s.handleAccount))
 	http.HandleFunc("/mempool", s.wrapMetrics("/mempool", s.handleMempoolView))
+	// Legacy /broadcast endpoint (kept for backward compatibility with old ledger.Transaction format)
 	http.HandleFunc("/broadcast", s.wrapMetrics("/broadcast", s.handleBroadcast))
 	http.HandleFunc("/search", s.wrapMetrics("/search", s.handleSearch))
 
@@ -682,12 +683,23 @@ func (s *FarmingServer) handleMempoolView(w http.ResponseWriter, r *http.Request
 }
 
 // handleBroadcast handles POST /broadcast
+// v1.1.1: Routes to handleSubmitV1 for v1.1.0 format, keeps legacy support
 func (s *FarmingServer) handleBroadcast(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
+	// v1.1.1: Check Content-Type for v1.1.0 format (application/json)
+	contentType := r.Header.Get("Content-Type")
+	if contentType == "application/json" {
+		// Route to v1.1.0 handler (same as /submit)
+		s.handleSubmitV1(w, r)
+		return
+	}
+
+	// Legacy handler for old ledger.Transaction format
 	var tx ledger.Transaction
 	if err := json.NewDecoder(r.Body).Decode(&tx); err != nil {
 		http.Error(w, "Invalid transaction", http.StatusBadRequest)
@@ -1004,8 +1016,23 @@ func (s *FarmingServer) handleEstimateFee(w http.ResponseWriter, r *http.Request
 
 // handleSubmitV1 handles POST /submit (v1.1.0 signed transaction format)
 func (s *FarmingServer) handleSubmitV1(w http.ResponseWriter, r *http.Request) {
+	// v1.1.1: Return 405 with Allow header for non-POST methods
 	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// v1.1.1: Require Content-Type: application/json
+	contentType := r.Header.Get("Content-Type")
+	if contentType != "application/json" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnsupportedMediaType)
+		response := map[string]interface{}{
+			"ok":    false,
+			"error": "Content-Type must be application/json",
+		}
+		json.NewEncoder(w).Encode(response)
 		return
 	}
 

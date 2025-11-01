@@ -226,8 +226,23 @@ func broadcast() {
 	}
 
 	// POST to /submit
+	// v1.1.1: Use http.Client with CheckRedirect to prevent POST→GET conversions
 	url := strings.TrimSuffix(rpcURL, "/") + "/submit"
-	resp, err := http.Post(url, "application/json", strings.NewReader(string(jsonData)))
+	req, err := http.NewRequest("POST", url, strings.NewReader(string(jsonData)))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating request: %v\n", err)
+		os.Exit(1)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			// Prevent redirects (which would convert POST to GET)
+			return http.ErrUseLastResponse
+		},
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error sending request: %v\n", err)
 		os.Exit(1)
