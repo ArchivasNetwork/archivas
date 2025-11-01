@@ -15,8 +15,8 @@ type Consensus struct {
 
 const (
 	// InitialDifficulty in new domain (1e9-1e12)
-	// Start at 500 billion (middle of range)
-	InitialDifficulty = 500_000_000_000
+	// Start at 15M for ~20s blocks (adjusted from testing)
+	InitialDifficulty = 15_000_000
 )
 
 // NewConsensus creates a new consensus instance
@@ -38,31 +38,36 @@ func (c *Consensus) VerifyProofOfSpace(proof *pospace.Proof, challenge [32]byte)
 }
 
 // UpdateDifficulty updates the difficulty based on actual vs target block time
+// Uses inverted proportional control with damping
 func (c *Consensus) UpdateDifficulty(actualBlockTime time.Duration) {
-	// Simple adjustment for now (smoothing in difficulty.go)
 	target := c.TargetBlockTime.Seconds()
 	actual := actualBlockTime.Seconds()
 	
-	if actual == 0 {
+	if actual == 0 || actual < 0.1 {
 		return
 	}
 	
-	ratio := target / actual
-	newDiff := uint64(float64(c.DifficultyTarget) * ratio)
+	// Inverted: scale = target / observed
+	// If blocks too fast (2s vs 20s target), scale = 10 (harder!)
+	scale := target / actual
 	
-	// Limit changes to 2x per adjustment
-	if newDiff > c.DifficultyTarget*2 {
-		newDiff = c.DifficultyTarget * 2
-	}
-	if newDiff < c.DifficultyTarget/2 {
-		newDiff = c.DifficultyTarget / 2
-	}
+	// Damping factor (alpha = 0.5)
+	alpha := 0.5
+	adjustedScale := 1.0 + alpha*(scale-1.0)
 	
-	// Minimum difficulty
-	if newDiff < 1000000 {
-		newDiff = 1000000
+	// Apply to difficulty
+	newDiff := uint64(float64(c.DifficultyTarget) * adjustedScale)
+	
+	// Clamp to domain [1e8, 1e12]
+	minDiff := uint64(100_000_000)   // 100M
+	maxDiff := uint64(1_000_000_000_000) // 1T (QMAX)
+	
+	if newDiff < minDiff {
+		newDiff = minDiff
+	}
+	if newDiff > maxDiff {
+		newDiff = maxDiff
 	}
 	
 	c.DifficultyTarget = newDiff
 }
-
