@@ -21,10 +21,10 @@ var (
 		Help: "Number of connected P2P peers",
 	})
 
-	// BlocksSealed counts blocks sealed by this node
-	BlocksSealed = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "archivas_blocks_sealed_total",
-		Help: "Total blocks sealed by this node",
+	// BlocksTotal counts total blocks processed (v1.0.0 compatible name)
+	BlocksTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "archivas_blocks_total",
+		Help: "Total number of blocks processed",
 	})
 
 	// Difficulty tracks current mining difficulty
@@ -106,7 +106,7 @@ var (
 	tipHeightWatchdog      = registerWatchdog(GroupNode, "archivas_tip_height", 30*time.Second)
 	peerCountWatchdog      = registerWatchdog(GroupNode, "archivas_peer_count", 30*time.Second)
 	difficultyWatchdog     = registerWatchdog(GroupNode, "archivas_difficulty", 30*time.Second)
-	blocksSealedWatchdog   = registerWatchdog(GroupNode, "archivas_blocks_sealed_total", 10*time.Minute)
+	blocksTotalWatchdog    = registerWatchdog(GroupNode, "archivas_blocks_total", 10*time.Minute)
 	submitReceivedWatchdog = registerWatchdog(GroupNode, "archivas_submit_received_total", 5*time.Minute)
 	submitAcceptedWatchdog = registerWatchdog(GroupNode, "archivas_submit_accepted_total", 5*time.Minute)
 	submitIgnoredWatchdog  = registerWatchdog(GroupNode, "archivas_submit_ignored_total", 5*time.Minute)
@@ -130,10 +130,10 @@ func UpdateDifficulty(difficulty uint64) {
 	difficultyWatchdog.Touch()
 }
 
-// IncBlocksSealed increments the blocks sealed counter and touches the watchdog.
-func IncBlocksSealed() {
-	BlocksSealed.Inc()
-	blocksSealedWatchdog.Touch()
+// IncBlocksTotal increments the blocks counter and touches the watchdog (v1.0.0 compatible name).
+func IncBlocksTotal() {
+	BlocksTotal.Inc()
+	blocksTotalWatchdog.Touch()
 }
 
 // IncSubmitReceived increments the submissions received counter.

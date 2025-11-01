@@ -802,7 +802,7 @@ func (ns *NodeState) VerifyAndApplyBlock(blockJSON json.RawMessage) error {
 
 	// Update Prometheus metrics
 	metrics.UpdateTipHeight(ns.CurrentHeight)
-	metrics.IncBlocksSealed()
+	metrics.IncBlocksTotal()
 	metrics.UpdateDifficulty(block.Difficulty)
 
 	// Record block for health tracking
