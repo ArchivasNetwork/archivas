@@ -466,6 +466,9 @@ func main() {
 
 // AcceptBlock is called by RPC when a farmer submits a block
 func (ns *NodeState) AcceptBlock(proof *pospace.Proof, farmerAddr string, farmerPubKey []byte) error {
+	// Track submission
+	metrics.SubmitReceived.Inc()
+	
 	ns.Lock()
 	defer ns.Unlock()
 
@@ -477,8 +480,12 @@ func (ns *NodeState) AcceptBlock(proof *pospace.Proof, farmerAddr string, farmer
 	// We accept this because VDF advances quickly and farmer might have found it
 	// for a slightly older challenge
 	if err := ns.Consensus.VerifyProofOfSpace(proof, proof.Challenge); err != nil {
+		metrics.SubmitIgnored.Inc()
 		return fmt.Errorf("invalid proof: %w", err)
 	}
+	
+	// Proof accepted
+	metrics.SubmitAccepted.Inc()
 
 	// Get pending transactions
 	pending := ns.Mempool.Pending()
@@ -771,9 +778,9 @@ func (ns *NodeState) VerifyAndApplyBlock(blockJSON json.RawMessage) error {
 
 	// Update Prometheus metrics
 	metrics.TipHeight.Set(float64(ns.CurrentHeight))
-	metrics.BlocksTotal.Inc()
+	metrics.BlocksSealed.Inc()
 	metrics.Difficulty.Set(float64(block.Difficulty))
-
+	
 	// Record block for health tracking
 	if ns.Health != nil {
 		ns.Health.RecordBlock()

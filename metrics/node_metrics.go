@@ -5,7 +5,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-// Node metrics
+// Node metrics - v1.0.1 restoration
 var (
 	// TipHeight tracks the current blockchain height
 	TipHeight = promauto.NewGauge(prometheus.GaugeOpts{
@@ -19,16 +19,32 @@ var (
 		Help: "Number of connected P2P peers",
 	})
 
-	// BlocksTotal counts total blocks processed
-	BlocksTotal = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "archivas_blocks_total",
-		Help: "Total number of blocks processed",
+	// BlocksSealed counts blocks sealed by this node
+	BlocksSealed = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "archivas_blocks_sealed_total",
+		Help: "Total blocks sealed by this node",
 	})
 
 	// Difficulty tracks current mining difficulty
 	Difficulty = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "archivas_difficulty",
-		Help: "Current mining difficulty target",
+		Help: "Current mining difficulty target in QMAX domain",
+	})
+	
+	// Submission counters
+	SubmitReceived = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "archivas_submit_received_total",
+		Help: "Proof submissions received",
+	})
+	
+	SubmitAccepted = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "archivas_submit_accepted_total",
+		Help: "Proof submissions accepted",
+	})
+	
+	SubmitIgnored = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "archivas_submit_ignored_total",
+		Help: "Proof submissions ignored",
 	})
 
 	// BlockDuration tracks time to process blocks
