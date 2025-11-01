@@ -418,6 +418,22 @@ func main() {
 	time.Sleep(500 * time.Millisecond)
 	log.Println("[DEBUG] RPC server running")
 
+	// Start metrics updater (updates gauges every 2s)
+	go func() {
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			nodeState.RLock()
+			metrics.TipHeight.Set(float64(nodeState.CurrentHeight))
+			if nodeState.P2P != nil {
+				connected, _ := nodeState.P2P.GetPeerList()
+				metrics.PeerCount.Set(float64(len(connected)))
+			}
+			metrics.Difficulty.Set(float64(nodeState.Consensus.DifficultyTarget))
+			nodeState.RUnlock()
+		}
+	}()
+
 	fmt.Println("✅ Node initialized successfully")
 	fmt.Println("🌾 Waiting for farmers to submit blocks...")
 	fmt.Println()
@@ -429,7 +445,7 @@ func main() {
 	// Heartbeat loop - shows node is alive and waiting for blocks
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
-	
+
 	lastBlockTime := time.Now()
 
 	for range ticker.C {
@@ -438,12 +454,12 @@ func main() {
 		difficulty := nodeState.Consensus.DifficultyTarget
 		challenge := nodeState.CurrentChallenge
 		chainLen := len(nodeState.Chain)
-		
+
 		// Check if we got a new block
 		if chainLen > int(height)+1 {
 			lastBlockTime = time.Now()
 		}
-		
+
 		// Time-based difficulty drop: if no block for 60 seconds, halve difficulty
 		timeSinceBlock := time.Since(lastBlockTime)
 		if timeSinceBlock > 60*time.Second && difficulty > 1_000_000 {
@@ -456,7 +472,7 @@ func main() {
 			lastBlockTime = time.Now() // Reset timer
 			log.Printf("[auto-drop] No block for %v, dropping difficulty: %d → %d", timeSinceBlock, oldDiff, difficulty)
 		}
-		
+
 		nodeState.Unlock()
 
 		log.Printf("[consensus] height=%d difficulty=%d challenge=%x chainLen=%d",
@@ -468,7 +484,7 @@ func main() {
 func (ns *NodeState) AcceptBlock(proof *pospace.Proof, farmerAddr string, farmerPubKey []byte) error {
 	// Track submission
 	metrics.SubmitReceived.Inc()
-	
+
 	ns.Lock()
 	defer ns.Unlock()
 
@@ -483,7 +499,7 @@ func (ns *NodeState) AcceptBlock(proof *pospace.Proof, farmerAddr string, farmer
 		metrics.SubmitIgnored.Inc()
 		return fmt.Errorf("invalid proof: %w", err)
 	}
-	
+
 	// Proof accepted
 	metrics.SubmitAccepted.Inc()
 
@@ -555,16 +571,16 @@ func (ns *NodeState) AcceptBlock(proof *pospace.Proof, farmerAddr string, farmer
 	newBlockHash := hashBlock(&newBlock)
 	ns.CurrentChallenge = consensus.GenerateChallenge(newBlockHash, nextHeight+1)
 
-		// TEMPORARY: Aggressive difficulty drop to get blocks flowing
-		// Drop difficulty by 50% every block until it reaches 1M
-		if ns.Consensus.DifficultyTarget > 1_000_000 {
-			oldDiff := ns.Consensus.DifficultyTarget
-			ns.Consensus.DifficultyTarget = ns.Consensus.DifficultyTarget / 2
-			if ns.Consensus.DifficultyTarget < 1_000_000 {
-				ns.Consensus.DifficultyTarget = 1_000_000
-			}
-			log.Printf("[difficulty] Dropping difficulty: %d → %d", oldDiff, ns.Consensus.DifficultyTarget)
+	// TEMPORARY: Aggressive difficulty drop to get blocks flowing
+	// Drop difficulty by 50% every block until it reaches 1M
+	if ns.Consensus.DifficultyTarget > 1_000_000 {
+		oldDiff := ns.Consensus.DifficultyTarget
+		ns.Consensus.DifficultyTarget = ns.Consensus.DifficultyTarget / 2
+		if ns.Consensus.DifficultyTarget < 1_000_000 {
+			ns.Consensus.DifficultyTarget = 1_000_000
 		}
+		log.Printf("[difficulty] Dropping difficulty: %d → %d", oldDiff, ns.Consensus.DifficultyTarget)
+	}
 
 	// PERSIST TO DISK
 	log.Println("[storage] Persisting block and state...")
@@ -780,7 +796,7 @@ func (ns *NodeState) VerifyAndApplyBlock(blockJSON json.RawMessage) error {
 	metrics.TipHeight.Set(float64(ns.CurrentHeight))
 	metrics.BlocksSealed.Inc()
 	metrics.Difficulty.Set(float64(block.Difficulty))
-	
+
 	// Record block for health tracking
 	if ns.Health != nil {
 		ns.Health.RecordBlock()
