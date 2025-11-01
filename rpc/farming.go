@@ -16,6 +16,7 @@ import (
 	"github.com/iljanemesis/archivas/ledger"
 	"github.com/iljanemesis/archivas/mempool"
 	"github.com/iljanemesis/archivas/metrics"
+	txv1 "github.com/iljanemesis/archivas/pkg/tx/v1"
 	"github.com/iljanemesis/archivas/pospace"
 	"github.com/iljanemesis/archivas/wallet"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -137,6 +138,11 @@ func (s *FarmingServer) Start(addr string) error {
 	http.HandleFunc("/snapshot/info", s.wrapMetrics("/snapshot/info", s.handleSnapshotInfo))
 	http.HandleFunc("/sync/status", s.wrapMetrics("/sync/status", s.handleSyncStatus))
 	http.HandleFunc("/pruning", s.wrapMetrics("/pruning", s.handlePruning))
+
+	// v1.1.0: Wallet API (standardized)
+	http.HandleFunc("/tx/", s.wrapMetrics("/tx", s.handleTxByHash))
+	http.HandleFunc("/estimateFee", s.wrapMetrics("/estimateFee", s.handleEstimateFee))
+	http.HandleFunc("/submit", s.wrapMetrics("/submit", s.handleSubmitV1))
 
 	// Metrics endpoint
 	http.Handle("/metrics", promhttp.Handler())
@@ -288,10 +294,15 @@ func (s *FarmingServer) handleChainTip(w http.ResponseWriter, r *http.Request) {
 
 	height, difficulty, tipHash := s.nodeState.GetStatus()
 
-	response := ChainTipResponse{
-		BlockHash:  tipHash,
-		Height:     height,
-		Difficulty: difficulty,
+	// v1.1.0: Match exact spec format
+	response := struct {
+		Height     string `json:"height"`     // u64 as string
+		Hash       string `json:"hash"`       // hex
+		Difficulty string `json:"difficulty"` // u64 as string
+	}{
+		Height:     fmt.Sprintf("%d", height),
+		Hash:       hex.EncodeToString(tipHash[:]),
+		Difficulty: fmt.Sprintf("%d", difficulty),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -622,14 +633,15 @@ func (s *FarmingServer) handleAccount(w http.ResponseWriter, r *http.Request) {
 	balance := s.worldState.GetBalance(address)
 	nonce := s.worldState.GetNonce(address)
 
+	// v1.1.0: Return amounts as strings (base units)
 	response := struct {
 		Address string `json:"address"`
-		Balance int64  `json:"balance"`
-		Nonce   uint64 `json:"nonce"`
+		Balance string `json:"balance"` // u64 as string
+		Nonce   string `json:"nonce"`   // u64 as string
 	}{
 		Address: address,
-		Balance: balance,
-		Nonce:   nonce,
+		Balance: fmt.Sprintf("%d", balance),
+		Nonce:   fmt.Sprintf("%d", nonce),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -661,19 +673,12 @@ func (s *FarmingServer) handleMempoolView(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Get mempool transactions (mempool doesn't have GetAll, return empty for now)
-	txs := []ledger.Transaction{}
-
-	response := struct {
-		Count int                  `json:"count"`
-		Txs   []ledger.Transaction `json:"txs"`
-	}{
-		Count: len(txs),
-		Txs:   txs,
-	}
+	// v1.1.0: Return array of pending tx hashes (strings)
+	// TODO: Extract actual tx hashes from mempool
+	txHashes := []string{}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(txHashes)
 }
 
 // handleBroadcast handles POST /broadcast
@@ -939,4 +944,118 @@ func (s *FarmingServer) handlePruning(w http.ResponseWriter, r *http.Request) {
 		"mode":   "archive",
 		"retain": 0,
 	})
+}
+
+// v1.1.0: Wallet API handlers
+
+// handleTxByHash handles GET /tx/<hash>
+func (s *FarmingServer) handleTxByHash(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract hash from URL path
+	path := r.URL.Path[len("/tx/"):]
+	txHash, err := hex.DecodeString(path)
+	if err != nil || len(txHash) != 32 {
+		http.Error(w, "Invalid transaction hash", http.StatusBadRequest)
+		return
+	}
+
+	// TODO: Lookup transaction in blockchain and mempool
+	// For now, return not found
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"confirmed": false,
+		"height":    nil,
+	})
+}
+
+// handleEstimateFee handles GET /estimateFee?bytes=<n>
+func (s *FarmingServer) handleEstimateFee(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Simple linear estimator: 100 base units per KB
+	bytesParam := r.URL.Query().Get("bytes")
+	var txSize int64 = 256 // Default estimate
+	if bytesParam != "" {
+		fmt.Sscanf(bytesParam, "%d", &txSize)
+	}
+
+	// Linear fee: 100 base units per KB, minimum 100
+	fee := int64((txSize * 100) / 1024)
+	if fee < 100 {
+		fee = 100
+	}
+
+	response := struct {
+		Fee string `json:"fee"` // u64 as string
+	}{
+		Fee: fmt.Sprintf("%d", fee),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleSubmitV1 handles POST /submit (v1.1.0 signed transaction format)
+func (s *FarmingServer) handleSubmitV1(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Rate limit: 64 KB max body size
+	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
+
+	// Decode signed transaction
+	var stx txv1.SignedTx
+	if err := json.NewDecoder(r.Body).Decode(&stx); err != nil {
+		response := map[string]interface{}{
+			"ok":    false,
+			"error": fmt.Sprintf("Invalid request body: %v", err),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	// Verify signature
+	valid, err := txv1.VerifySignedTx(&stx)
+	if err != nil {
+		response := map[string]interface{}{
+			"ok":    false,
+			"error": fmt.Sprintf("Verification error: %v", err),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	if !valid {
+		response := map[string]interface{}{
+			"ok":    false,
+			"error": "Invalid signature",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	// TODO: Convert to ledger.Transaction and add to mempool
+	// For now, return success
+	response := map[string]interface{}{
+		"ok":   true,
+		"hash": stx.Hash,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
