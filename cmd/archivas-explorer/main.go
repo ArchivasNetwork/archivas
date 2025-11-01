@@ -240,41 +240,121 @@ func (e *Explorer) getChainTip() (*ChainInfo, error) {
 	}
 	defer resp.Body.Close()
 
+	// v1.1.0: chainTip returns strings instead of numbers
 	var result struct {
-		BlockHash  []byte `json:"blockHash"`
-		Height     uint64 `json:"height"`
-		Difficulty uint64 `json:"difficulty"`
+		Hash       string `json:"hash"`       // hex string
+		Height     string `json:"height"`     // u64 as string
+		Difficulty string `json:"difficulty"` // u64 as string
+		// Legacy fields for backward compatibility
+		BlockHash  []byte `json:"blockHash,omitempty"`
+		HeightNum  uint64 `json:"heightNum,omitempty"`
+		DifficultyNum uint64 `json:"difficultyNum,omitempty"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, err
 	}
 
+	// Parse height and difficulty from strings
+	var height uint64
+	var difficulty uint64
+	var blockHash string
+
+	if result.Height != "" {
+		// v1.1.0 format: parse from string
+		var err error
+		height, err = strconv.ParseUint(result.Height, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid height: %v", err)
+		}
+	} else if result.HeightNum != 0 {
+		// Legacy format
+		height = result.HeightNum
+	} else {
+		return nil, fmt.Errorf("missing height")
+	}
+
+	if result.Difficulty != "" {
+		// v1.1.0 format: parse from string
+		var err error
+		difficulty, err = strconv.ParseUint(result.Difficulty, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid difficulty: %v", err)
+		}
+	} else if result.DifficultyNum != 0 {
+		// Legacy format
+		difficulty = result.DifficultyNum
+	} else {
+		return nil, fmt.Errorf("missing difficulty")
+	}
+
+	if result.Hash != "" {
+		// v1.1.0 format: hash is already hex string
+		blockHash = result.Hash
+	} else if len(result.BlockHash) > 0 {
+		// Legacy format: encode bytes to hex
+		blockHash = hex.EncodeToString(result.BlockHash)
+	} else {
+		return nil, fmt.Errorf("missing block hash")
+	}
+
 	return &ChainInfo{
-		Height:     result.Height,
-		Difficulty: result.Difficulty,
-		BlockHash:  hex.EncodeToString(result.BlockHash),
+		Height:     height,
+		Difficulty: difficulty,
+		BlockHash:  blockHash,
 	}, nil
 }
 
 func (e *Explorer) getBalance(address string) (int64, uint64, error) {
-	url := fmt.Sprintf("%s/balance/%s", e.nodeURL, address)
+	url := fmt.Sprintf("%s/account/%s", e.nodeURL, address)
 	resp, err := http.Get(url)
 	if err != nil {
 		return 0, 0, err
 	}
 	defer resp.Body.Close()
 
+	// v1.1.0: /account returns strings, but try /balance first for backward compatibility
 	var result struct {
-		Balance int64  `json:"balance"`
-		Nonce   uint64 `json:"nonce"`
+		Balance string `json:"balance"` // u64 as string (v1.1.0)
+		Nonce   string `json:"nonce"`   // u64 as string (v1.1.0)
+		// Legacy fields
+		BalanceNum int64  `json:"balanceNum,omitempty"`
+		NonceNum   uint64 `json:"nonceNum,omitempty"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return 0, 0, err
 	}
 
-	return result.Balance, result.Nonce, nil
+	// Parse balance and nonce from strings
+	var balance int64
+	var nonce uint64
+
+	if result.Balance != "" {
+		// v1.1.0 format: parse from string
+		var err error
+		balance, err = strconv.ParseInt(result.Balance, 10, 64)
+		if err != nil {
+			return 0, 0, fmt.Errorf("invalid balance: %v", err)
+		}
+	} else if result.BalanceNum != 0 {
+		// Legacy format
+		balance = result.BalanceNum
+	}
+
+	if result.Nonce != "" {
+		// v1.1.0 format: parse from string
+		var err error
+		nonce, err = strconv.ParseUint(result.Nonce, 10, 64)
+		if err != nil {
+			return 0, 0, fmt.Errorf("invalid nonce: %v", err)
+		}
+	} else if result.NonceNum != 0 {
+		// Legacy format
+		nonce = result.NonceNum
+	}
+
+	return balance, nonce, nil
 }
 
 func (e *Explorer) handleMempool(w http.ResponseWriter, r *http.Request) {
