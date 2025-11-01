@@ -16,6 +16,7 @@ import (
 	"github.com/iljanemesis/archivas/consensus"
 	"github.com/iljanemesis/archivas/health"
 	"github.com/iljanemesis/archivas/ledger"
+	"github.com/iljanemesis/archivas/logging"
 	"github.com/iljanemesis/archivas/mempool"
 	"github.com/iljanemesis/archivas/metrics"
 	"github.com/iljanemesis/archivas/p2p"
@@ -69,6 +70,8 @@ type NodeState struct {
 }
 
 func main() {
+	logging.ConfigureJSON("archivas-node")
+
 	// Parse CLI flags
 	rpcAddr := flag.String("rpc", ":8080", "RPC listen address")
 	p2pAddr := flag.String("p2p", ":9090", "P2P listen address")
@@ -336,6 +339,11 @@ func main() {
 		NetworkID:        *networkID,
 	}
 
+	metrics.StartWatchdogs(metrics.GroupNode)
+	metrics.UpdateTipHeight(nodeState.CurrentHeight)
+	metrics.UpdateDifficulty(nodeState.Consensus.DifficultyTarget)
+	metrics.UpdatePeerCount(0)
+
 	log.Println("[DEBUG] Initialized chain memory")
 	fmt.Printf("🔍 Current challenge: %x\n", genesisChallenge[:8])
 	fmt.Println()
@@ -424,12 +432,12 @@ func main() {
 		defer ticker.Stop()
 		for range ticker.C {
 			nodeState.RLock()
-			metrics.TipHeight.Set(float64(nodeState.CurrentHeight))
+			metrics.UpdateTipHeight(nodeState.CurrentHeight)
 			if nodeState.P2P != nil {
 				connected, _ := nodeState.P2P.GetPeerList()
-				metrics.PeerCount.Set(float64(len(connected)))
+				metrics.UpdatePeerCount(len(connected))
 			}
-			metrics.Difficulty.Set(float64(nodeState.Consensus.DifficultyTarget))
+			metrics.UpdateDifficulty(nodeState.Consensus.DifficultyTarget)
 			nodeState.RUnlock()
 		}
 	}()
@@ -483,7 +491,7 @@ func main() {
 // AcceptBlock is called by RPC when a farmer submits a block
 func (ns *NodeState) AcceptBlock(proof *pospace.Proof, farmerAddr string, farmerPubKey []byte) error {
 	// Track submission
-	metrics.SubmitReceived.Inc()
+	metrics.IncSubmitReceived()
 
 	ns.Lock()
 	defer ns.Unlock()
@@ -496,12 +504,12 @@ func (ns *NodeState) AcceptBlock(proof *pospace.Proof, farmerAddr string, farmer
 	// We accept this because VDF advances quickly and farmer might have found it
 	// for a slightly older challenge
 	if err := ns.Consensus.VerifyProofOfSpace(proof, proof.Challenge); err != nil {
-		metrics.SubmitIgnored.Inc()
+		metrics.IncSubmitIgnored()
 		return fmt.Errorf("invalid proof: %w", err)
 	}
 
 	// Proof accepted
-	metrics.SubmitAccepted.Inc()
+	metrics.IncSubmitAccepted()
 
 	// Get pending transactions
 	pending := ns.Mempool.Pending()
@@ -793,9 +801,9 @@ func (ns *NodeState) VerifyAndApplyBlock(blockJSON json.RawMessage) error {
 	ns.CurrentHeight = block.Height
 
 	// Update Prometheus metrics
-	metrics.TipHeight.Set(float64(ns.CurrentHeight))
-	metrics.BlocksSealed.Inc()
-	metrics.Difficulty.Set(float64(block.Difficulty))
+	metrics.UpdateTipHeight(ns.CurrentHeight)
+	metrics.IncBlocksSealed()
+	metrics.UpdateDifficulty(block.Difficulty)
 
 	// Record block for health tracking
 	if ns.Health != nil {

@@ -1,5 +1,5 @@
 {
-  "title": "Archivas Network Overview",
+  "title": "Archivas Observability Overview",
   "panels": [
     {
       "id": 1,
@@ -11,7 +11,7 @@
           "legendFormat": "{{instance}}"
         }
       ],
-      "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0}
+      "gridPos": {"h": 5, "w": 6, "x": 0, "y": 0}
     },
     {
       "id": 2,
@@ -23,11 +23,11 @@
           "legendFormat": "{{instance}}"
         }
       ],
-      "gridPos": {"h": 8, "w": 6, "x": 6, "y": 0}
+      "gridPos": {"h": 5, "w": 6, "x": 6, "y": 0}
     },
     {
       "id": 3,
-      "title": "Difficulty",
+      "title": "Difficulty (QMAX)",
       "type": "stat",
       "targets": [
         {
@@ -35,23 +35,35 @@
           "legendFormat": "{{instance}}"
         }
       ],
-      "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0}
+      "gridPos": {"h": 5, "w": 6, "x": 12, "y": 0}
     },
     {
       "id": 4,
-      "title": "Blocks Mined",
+      "title": "Blocks Sealed",
       "type": "stat",
       "targets": [
         {
-          "expr": "archivas_blocks_total",
+          "expr": "archivas_blocks_sealed_total",
           "legendFormat": "{{instance}}"
         }
       ],
-      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0}
+      "gridPos": {"h": 5, "w": 6, "x": 18, "y": 0}
     },
     {
       "id": 5,
-      "title": "Block Height Over Time",
+      "title": "Watchdogs Firing",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(archivas_metrics_watchdog_triggered)",
+          "legendFormat": "{{instance}}"
+        }
+      ],
+      "gridPos": {"h": 5, "w": 6, "x": 0, "y": 5}
+    },
+    {
+      "id": 6,
+      "title": "Tip Height Over Time",
       "type": "graph",
       "targets": [
         {
@@ -59,11 +71,11 @@
           "legendFormat": "{{instance}}"
         }
       ],
-      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 8}
+      "gridPos": {"h": 9, "w": 9, "x": 6, "y": 5}
     },
     {
-      "id": 6,
-      "title": "Peer Count Over Time",
+      "id": 7,
+      "title": "Peer Inventory",
       "type": "graph",
       "targets": [
         {
@@ -75,10 +87,38 @@
           "legendFormat": "Known - {{instance}}"
         }
       ],
-      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 8}
+      "gridPos": {"h": 9, "w": 9, "x": 15, "y": 5}
     },
     {
-      "id": 7,
+      "id": 8,
+      "title": "Difficulty Trend",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "archivas_difficulty",
+          "legendFormat": "{{instance}}"
+        }
+      ],
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 14}
+    },
+    {
+      "id": 9,
+      "title": "Submit Path Throughput",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "rate(archivas_submit_received_total[5m])",
+          "legendFormat": "Received - {{instance}}"
+        },
+        {
+          "expr": "rate(archivas_submit_accepted_total[5m])",
+          "legendFormat": "Accepted - {{instance}}"
+        }
+      ],
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 14}
+    },
+    {
+      "id": 10,
       "title": "RPC Requests by Endpoint",
       "type": "graph",
       "targets": [
@@ -87,13 +127,25 @@
           "legendFormat": "{{endpoint}} - {{instance}}"
         }
       ],
-      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 17}
+      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 23}
+    },
+    {
+      "id": 11,
+      "title": "Watchdog Status",
+      "type": "table",
+      "targets": [
+        {
+          "expr": "archivas_metrics_watchdog_triggered",
+          "legendFormat": "{{metric}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 32}
     }
   ],
-  "refresh": "5s",
-  "time": {"from": "now-1h", "to": "now"},
+  "refresh": "10s",
+  "time": {"from": "now-24h", "to": "now"},
   "timezone": "browser",
   "schemaVersion": 27,
-  "version": 1
+  "version": 2
 }
 

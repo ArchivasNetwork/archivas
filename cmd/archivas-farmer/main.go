@@ -13,11 +13,14 @@ import (
 	"time"
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
+	"github.com/iljanemesis/archivas/logging"
 	"github.com/iljanemesis/archivas/pospace"
 	"github.com/iljanemesis/archivas/wallet"
 )
 
 func main() {
+	logging.ConfigureJSON("archivas-farmer")
+
 	if len(os.Args) < 2 {
 		printUsage()
 		os.Exit(1)
@@ -220,7 +223,7 @@ func cmdFarm() {
 
 		if bestProof != nil && bestProof.Quality < challengeInfo.Difficulty {
 			fmt.Printf("🎉 Found winning proof! Quality: %d (target: %d)\n", bestProof.Quality, challengeInfo.Difficulty)
-			
+
 			// Submit block with VDF info
 			if err := submitBlock(*nodeURL, bestProof, farmerAddr, farmerPubKey, privKeyBytes, challengeInfo); err != nil {
 				fmt.Printf("❌ Error submitting block: %v\n", err)
@@ -246,9 +249,9 @@ type ChallengeInfo struct {
 	Difficulty uint64   `json:"difficulty"`
 	Height     uint64   `json:"height"`
 	VDF        *struct {
-		Seed       string `json:"seed"`       // hex-encoded
+		Seed       string `json:"seed"` // hex-encoded
 		Iterations uint64 `json:"iterations"`
-		Output     string `json:"output"`     // hex-encoded
+		Output     string `json:"output"` // hex-encoded
 	} `json:"vdf,omitempty"`
 }
 
@@ -273,7 +276,7 @@ func getChallenge(nodeURL string) (*ChallengeInfo, error) {
 	if len(info.Challenge) == 0 {
 		return nil, fmt.Errorf("challenge is empty after decode")
 	}
-	
+
 	// Log challenge value to verify it's changing
 	fmt.Printf("   Challenge: %x...\n", info.Challenge[:8])
 
@@ -287,7 +290,7 @@ func submitBlock(nodeURL string, proof *pospace.Proof, farmerAddr string, farmer
 		"farmerAddr":   farmerAddr,
 		"farmerPubKey": hex.EncodeToString(farmerPubKey),
 	}
-	
+
 	// Add VDF info if present (for PoSpace+Time mode)
 	if challenge.VDF != nil {
 		vdfSeed, _ := hex.DecodeString(challenge.VDF.Seed)

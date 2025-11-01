@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/iljanemesis/archivas/logging"
 	"github.com/iljanemesis/archivas/vdf"
 )
 
@@ -33,6 +34,8 @@ type VDFUpdateRequest struct {
 }
 
 func main() {
+	logging.ConfigureJSON("archivas-timelord")
+
 	// Parse CLI flags
 	nodeURL := flag.String("node", "http://localhost:8080", "Node RPC URL")
 	stepSize := flag.Uint64("step", 500, "VDF iterations per tick")

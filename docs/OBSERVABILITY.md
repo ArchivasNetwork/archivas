@@ -28,6 +28,19 @@ curl http://57.129.148.132:8080/metrics
 curl http://72.251.11.191:8080/metrics
 ```
 
+### 3. Autodiscovery & Health Checks
+
+- `GET /metrics/targets.json` – deterministic list of scrape targets. Supports `?includePeers=true&peerPort=8080` for quick peer fan-out.
+- `GET /metrics/health` – JSON health summary driven by internal watchdogs. Returns `status=ok` when all gauges/counters are fresh.
+
+```bash
+# List scrape targets (self + peer inventory)
+curl "http://localhost:8080/metrics/targets.json?includePeers=true"
+
+# Watchdog health snapshot
+curl http://localhost:8080/metrics/health | jq
+```
+
 ---
 
 ## Metrics Reference
@@ -39,9 +52,13 @@ curl http://72.251.11.191:8080/metrics
 | `archivas_tip_height` | Gauge | Current blockchain height |
 | `archivas_peer_count` | Gauge | Connected peers |
 | `archivas_peers_known` | Gauge | Total known peers (connected + discovered) |
-| `archivas_blocks_total` | Counter | Total blocks processed |
+| `archivas_blocks_sealed_total` | Counter | Blocks sealed by this node |
 | `archivas_difficulty` | Gauge | Current mining difficulty |
+| `archivas_submit_received_total` | Counter | Proof submissions received |
+| `archivas_submit_accepted_total` | Counter | Proof submissions accepted |
+| `archivas_submit_ignored_total` | Counter | Proof submissions rejected/ignored |
 | `archivas_rpc_requests_total{endpoint}` | Counter | RPC requests by endpoint |
+| `archivas_metrics_watchdog_triggered{metric}` | Gauge | 1 when the metric watchdog fired |
 | `archivas_gossip_msgs_total` | Counter | Peer gossip messages sent |
 | `archivas_gossip_addrs_received_total` | Counter | Peer addresses received |
 
@@ -66,18 +83,22 @@ curl http://72.251.11.191:8080/metrics
 
 ## Grafana Dashboards
 
-### Pre-loaded Dashboard: "Archivas Network Overview"
+### Pre-loaded Dashboard: "Archivas Observability Overview"
 
 **Panels:**
-- Tip Height (per node)
-- Connected Peers
-- Current Difficulty
-- Total Blocks Processed
-- Block Height Over Time (graph)
-- Peer Count Over Time (graph)
-- RPC Request Rate (graph)
+- Tip Height (stat)
+- Connected Peers (stat)
+- Difficulty (QMAX, stat)
+- Blocks Sealed (stat)
+- Watchdogs Firing (stat)
+- Tip Height Over Time (graph)
+- Peer Inventory (graph)
+- Difficulty Trend (graph)
+- Submit Path Throughput (graph)
+- RPC Requests by Endpoint (graph)
+- Watchdog Status (table)
 
-**Access:** Grafana → Dashboards → Archivas Network Overview
+**Access:** Grafana → Dashboards → Archivas Observability Overview
 
 ### Creating Custom Dashboards
 
@@ -91,7 +112,7 @@ curl http://72.251.11.191:8080/metrics
 **Example Queries:**
 ```promql
 # Block production rate
-rate(archivas_blocks_total[5m])
+rate(archivas_blocks_sealed_total[5m])
 
 # Average peers per node
 avg(archivas_peer_count)
@@ -101,6 +122,9 @@ archivas_difficulty
 
 # RPC requests per minute
 rate(archivas_rpc_requests_total[1m])
+
+# Metrics watchdog (any firing in last 5m)
+max_over_time(archivas_metrics_watchdog_triggered[5m])
 ```
 
 ---
@@ -207,6 +231,21 @@ volumes:
       device: /opt/archivas/prometheus-data
       o: bind
 ```
+
+---
+
+## JSON Logging
+
+`archivas-node`, `archivas-farmer`, and `archivas-timelord` now emit structured JSONL logs via the standard logger. Each line includes a timestamp (`ts`), component name, log level (derived from prefixes like `[DEBUG]`), and the original message.
+
+Example:
+
+```json
+{"ts":"2025-11-01T19:33:12Z","component":"archivas-node","level":"info","msg":"[startup] Archivas node starting"}
+```
+
+- Pipe service logs through `jq` for readability: `journalctl -u archivas-node -o cat | jq`.
+- Human-friendly `fmt.Printf` banner output remains for CLI UX.
 
 ---
 

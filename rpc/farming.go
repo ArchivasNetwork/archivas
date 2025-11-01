@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
+	"github.com/iljanemesis/archivas/config"
 	"github.com/iljanemesis/archivas/ledger"
 	"github.com/iljanemesis/archivas/mempool"
 	"github.com/iljanemesis/archivas/metrics"
@@ -43,6 +45,13 @@ type FarmingServer struct {
 	faucetAddress string
 	faucetLimit   map[string]time.Time // IP -> last drip time
 	faucetMutex   sync.Mutex
+	listenAddr    string
+}
+
+type metricsTarget struct {
+	Job    string            `json:"job"`
+	URL    string            `json:"url"`
+	Labels map[string]string `json:"labels,omitempty"`
 }
 
 // NewFarmingServer creates a new farming-enabled RPC server
@@ -80,6 +89,8 @@ func (s *FarmingServer) EnableFaucet(privKeyHex string) error {
 
 // Start starts the farming RPC server
 func (s *FarmingServer) Start(addr string) error {
+	s.listenAddr = addr
+
 	// Original endpoints
 	http.HandleFunc("/balance/", s.wrapMetrics("/balance", s.handleBalance))
 	http.HandleFunc("/submitTx", s.wrapMetrics("/submitTx", s.handleSubmitTx))
@@ -103,7 +114,7 @@ func (s *FarmingServer) Start(addr string) error {
 	if s.faucetEnabled {
 		http.HandleFunc("/faucet", s.wrapMetrics("/faucet", s.handleFaucet))
 	}
-	
+
 	// Developer endpoints
 	http.HandleFunc("/recentBlocks", s.wrapMetrics("/recentBlocks", s.handleRecentBlocks))
 	http.HandleFunc("/block/", s.wrapMetrics("/block", s.handleBlockByHeight))
@@ -112,24 +123,26 @@ func (s *FarmingServer) Start(addr string) error {
 	http.HandleFunc("/mempool", s.wrapMetrics("/mempool", s.handleMempoolView))
 	http.HandleFunc("/broadcast", s.wrapMetrics("/broadcast", s.handleBroadcast))
 	http.HandleFunc("/search", s.wrapMetrics("/search", s.handleSearch))
-	
+
 	// v0.7.0: Validator registry
 	http.HandleFunc("/validators", s.wrapMetrics("/validators", s.handleValidators))
 	http.HandleFunc("/validators/register", s.wrapMetrics("/validators/register", s.handleValidatorRegister))
 	http.HandleFunc("/validators/heartbeat", s.wrapMetrics("/validators/heartbeat", s.handleValidatorHeartbeat))
-	
+
 	// v0.7.0: Governance
 	http.HandleFunc("/governance/params", s.wrapMetrics("/governance/params", s.handleGovParams))
 	http.HandleFunc("/governance/proposals", s.wrapMetrics("/governance/proposals", s.handleGovProposals))
-	
+
 	// v0.8.0: Snapshots & sync
 	http.HandleFunc("/snapshot/info", s.wrapMetrics("/snapshot/info", s.handleSnapshotInfo))
 	http.HandleFunc("/sync/status", s.wrapMetrics("/sync/status", s.handleSyncStatus))
 	http.HandleFunc("/pruning", s.wrapMetrics("/pruning", s.handlePruning))
-	
+
 	// Metrics endpoint
 	http.Handle("/metrics", promhttp.Handler())
 	http.HandleFunc("/metrics/extended", s.handleMetricsExtended)
+	http.HandleFunc("/metrics/targets.json", s.wrapMetrics("/metrics/targets.json", s.handleMetricsTargets))
+	http.HandleFunc("/metrics/health", s.wrapMetrics("/metrics/health", s.handleMetricsHealth))
 
 	return http.ListenAndServe(addr, s.corsMiddleware(http.DefaultServeMux))
 }
@@ -140,12 +153,12 @@ func (s *FarmingServer) corsMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		
+
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
-		
+
 		next.ServeHTTP(w, r)
 	})
 }
@@ -525,7 +538,7 @@ func (s *FarmingServer) handleRecentBlocks(w http.ResponseWriter, r *http.Reques
 	if countStr := r.URL.Query().Get("count"); countStr != "" {
 		fmt.Sscanf(countStr, "%d", &count)
 	}
-	
+
 	if count > 100 {
 		count = 100 // Max 100
 	}
@@ -652,8 +665,8 @@ func (s *FarmingServer) handleMempoolView(w http.ResponseWriter, r *http.Request
 	txs := []ledger.Transaction{}
 
 	response := struct {
-		Count int                    `json:"count"`
-		Txs   []ledger.Transaction   `json:"txs"`
+		Count int                  `json:"count"`
+		Txs   []ledger.Transaction `json:"txs"`
 	}{
 		Count: len(txs),
 		Txs:   txs,
@@ -743,7 +756,7 @@ func (s *FarmingServer) handleValidators(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"validators": []interface{}{},
-		"count": 0,
+		"count":      0,
 	})
 }
 
@@ -752,7 +765,7 @@ func (s *FarmingServer) handleValidatorRegister(w http.ResponseWriter, r *http.R
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "registered"})
 }
@@ -762,7 +775,7 @@ func (s *FarmingServer) handleValidatorHeartbeat(w http.ResponseWriter, r *http.
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
@@ -774,8 +787,8 @@ func (s *FarmingServer) handleGovParams(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"minCompatibleVersion": "v0.6.0-alpha",
-		"maxPeers": 20,
-		"reorgDepthMax": 100,
+		"maxPeers":             20,
+		"reorgDepthMax":        100,
 	})
 }
 
@@ -784,8 +797,105 @@ func (s *FarmingServer) handleGovProposals(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"proposals": []interface{}{},
-		"count": 0,
+		"count":     0,
 	})
+}
+
+func (s *FarmingServer) handleMetricsTargets(w http.ResponseWriter, r *http.Request) {
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+
+	host := r.Host
+	if host == "" {
+		host = s.listenAddr
+		if host == "" {
+			host = "127.0.0.1:8080"
+		} else if strings.HasPrefix(host, ":") {
+			host = "127.0.0.1" + host
+		}
+	}
+
+	seen := make(map[string]struct{})
+	targets := make([]metricsTarget, 0, 1)
+	selfURL := fmt.Sprintf("%s://%s/metrics", scheme, host)
+	labels := map[string]string{
+		"role":    "node",
+		"chain":   config.ChainName,
+		"chainID": fmt.Sprintf("%d", config.ChainID),
+	}
+	targets = append(targets, metricsTarget{Job: "archivas-node", URL: selfURL, Labels: labels})
+	seen[selfURL] = struct{}{}
+
+	includePeers := r.URL.Query().Get("includePeers")
+	if includePeers == "1" || strings.EqualFold(includePeers, "true") {
+		peerPort := r.URL.Query().Get("peerPort")
+		if peerPort == "" {
+			peerPort = "8080"
+		}
+
+		if s.nodeState != nil {
+			connected, known := s.nodeState.GetPeerList()
+			peers := append(connected, known...)
+			for _, addr := range peers {
+				hostOnly, _, err := net.SplitHostPort(addr)
+				if err != nil {
+					continue
+				}
+				peerURL := fmt.Sprintf("%s://%s:%s/metrics", scheme, hostOnly, peerPort)
+				if _, ok := seen[peerURL]; ok {
+					continue
+				}
+				targets = append(targets, metricsTarget{
+					Job: "archivas-node",
+					URL: peerURL,
+					Labels: map[string]string{
+						"role":    "peer",
+						"chain":   config.ChainName,
+						"chainID": fmt.Sprintf("%d", config.ChainID),
+						"source":  "peerlist",
+					},
+				})
+				seen[peerURL] = struct{}{}
+			}
+		}
+	}
+
+	response := struct {
+		GeneratedAt time.Time       `json:"generatedAt"`
+		Targets     []metricsTarget `json:"targets"`
+	}{
+		GeneratedAt: time.Now().UTC(),
+		Targets:     targets,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+func (s *FarmingServer) handleMetricsHealth(w http.ResponseWriter, r *http.Request) {
+	snapshots := metrics.SnapshotWatchdogs(metrics.GroupNode)
+	status := "ok"
+	for _, snap := range snapshots {
+		if snap.Triggered {
+			status = "degraded"
+			break
+		}
+	}
+
+	response := struct {
+		Status      string                     `json:"status"`
+		GeneratedAt time.Time                  `json:"generatedAt"`
+		Watchdogs   []metrics.WatchdogSnapshot `json:"watchdogs"`
+	}{
+		Status:      status,
+		GeneratedAt: time.Now().UTC(),
+		Watchdogs:   snapshots,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 
 // v0.7.0: Extended Metrics
@@ -804,7 +914,7 @@ func (s *FarmingServer) handleSnapshotInfo(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"latest": map[string]interface{}{
-			"height": 2154,
+			"height":    2154,
 			"stateRoot": "snapshot-ready",
 			"available": false,
 		},
@@ -813,20 +923,20 @@ func (s *FarmingServer) handleSnapshotInfo(w http.ResponseWriter, r *http.Reques
 
 func (s *FarmingServer) handleSyncStatus(w http.ResponseWriter, r *http.Request) {
 	height, _, _ := s.nodeState.GetStatus()
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"mode": "normal",
+		"mode":          "normal",
 		"currentHeight": height,
-		"targetHeight": height,
-		"synced": true,
+		"targetHeight":  height,
+		"synced":        true,
 	})
 }
 
 func (s *FarmingServer) handlePruning(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"mode": "archive",
+		"mode":   "archive",
 		"retain": 0,
 	})
 }
