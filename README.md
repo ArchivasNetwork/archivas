@@ -267,3 +267,45 @@ Built with Go, BadgerDB, secp256k1, and bech32.
 <p align="center">
   <strong>Archivas: Farming the future of decentralized storage</strong> 🌾
 </p>
+
+## Decommissioning Nodes
+
+### When to Decommission
+
+Decommission an Archivas node when:
+- **Non-syncing node** - Stuck at an old height and unable to catch up (e.g., Server B at height 3 with 5800+ block gap)
+- **Redundant node** - Network has sufficient nodes and this one is no longer needed
+- **Hardware reallocation** - Server needed for other purposes
+- **Network upgrade** - Node cannot upgrade to new protocol version
+
+### Decommission Process
+
+**⚠️ Warning:** This will permanently delete all blockchain data, plots, and configuration. Plots can be recreated, but sync history will be lost.
+
+**Command:**
+```bash
+cd ~/archivas
+bash scripts/decommission-node.sh
+```
+
+**What it does:**
+1. Stops all Archivas systemd services (node, timelord, farmer)
+2. Disables services to prevent auto-start
+3. Kills any stray processes
+4. Removes data directories (`~/.archivas`, `/var/lib/archivas`, `/opt/archivas`, etc.)
+5. Removes systemd unit files
+6. Runs `systemctl daemon-reload`
+7. Verifies cleanup completed successfully
+
+**Safe to rerun** - The script is idempotent and can be run multiple times.
+
+### After Decommissioning
+
+The server will be clean and ready for:
+- Redeployment as a fresh node (sync from genesis)
+- Other applications
+- Deallocation/shutdown
+
+To redeploy later, clone the repository and follow the setup guide in `docs/`.
+
+---
