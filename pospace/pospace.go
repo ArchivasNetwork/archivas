@@ -11,20 +11,26 @@ import (
 // SelfTest verifies PoSpace verification logic is correct
 // v1.1.1: Ensures quality <= difficulty rule is enforced
 func SelfTest() error {
-	// Test vectors
-	challenge := [32]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
-	plotHash := [32]byte{0xde, 0xad, 0xbe, 0xef, 0xca, 0xfe, 0xba, 0xbe, 0xfe, 0xed, 0xfa, 0xce, 0, 0x11, 0x22, 0x33}
+	// Create valid test data (matching pospace_test.go)
+	farmerPubKey := [33]byte{}
+	copy(farmerPubKey[:], []byte("test-farmer-pubkey-0123456789012"))
 	
+	plotID := sha256.Sum256(farmerPubKey[:])
+	challenge := sha256.Sum256([]byte("test-challenge"))
+	
+	// Compute a valid plot hash
+	index := uint64(123)
+	plotHash := computePlotHash(farmerPubKey[:], plotID[:], index)
 	q := computeQuality(challenge, plotHash)
 	
-	// Create test proof
+	// Create valid test proof
 	proof := &Proof{
 		Challenge:    challenge,
-		PlotID:       [32]byte{},
-		Index:        0,
+		PlotID:       plotID,
+		Index:        index,
 		Hash:         plotHash,
 		Quality:      q,
-		FarmerPubKey: [33]byte{},
+		FarmerPubKey: farmerPubKey,
 	}
 	
 	// Test 1: quality == difficulty should PASS
@@ -54,12 +60,12 @@ const (
 
 // PlotHeader contains metadata about a plot file
 type PlotHeader struct {
-	Magic         uint32   // Always 0x41524356 ("ARCV")
-	Version       uint32   // Plot format version
-	KSize         uint32   // K parameter (plot size = 2^k hashes)
-	FarmerPubKey  [33]byte // Compressed secp256k1 public key
-	PlotID        [32]byte // Unique plot identifier
-	NumHashes     uint64   // Total number of hashes in plot
+	Magic        uint32   // Always 0x41524356 ("ARCV")
+	Version      uint32   // Plot format version
+	KSize        uint32   // K parameter (plot size = 2^k hashes)
+	FarmerPubKey [33]byte // Compressed secp256k1 public key
+	PlotID       [32]byte // Unique plot identifier
+	NumHashes    uint64   // Total number of hashes in plot
 }
 
 // PlotFile represents a Proof-of-Space plot
@@ -100,10 +106,10 @@ func GeneratePlot(path string, kSize uint32, farmerPubKey []byte) error {
 
 	// Write header
 	header := PlotHeader{
-		Magic:    PlotMagic,
-		Version:  PlotVersion,
-		KSize:    kSize,
-		PlotID:   plotIDHash,
+		Magic:     PlotMagic,
+		Version:   PlotVersion,
+		KSize:     kSize,
+		PlotID:    plotIDHash,
 		NumHashes: numHashes,
 	}
 	copy(header.FarmerPubKey[:], farmerPubKey)
@@ -180,7 +186,7 @@ func (p *PlotFile) CheckChallenge(challenge [32]byte, difficultyTarget uint64) (
 
 	bestQuality := uint64(^uint64(0)) // max uint64
 	var bestProof *Proof
-	
+
 	// Debug: Log challenge being used
 	// fmt.Printf("[pospace] CheckChallenge: challenge=%x entries=%d\n", challenge[:8], p.Header.NumHashes)
 
@@ -241,10 +247,10 @@ func computeQuality(challenge [32]byte, hash [32]byte) uint64 {
 
 	// Take first 8 bytes as uint64, then normalize to QMAX domain
 	raw := binary.BigEndian.Uint64(result[:8])
-	
+
 	// Normalize to [0, QMAX] range
 	quality := raw % QMAX
-	
+
 	return quality
 }
 
@@ -270,4 +276,3 @@ func VerifyProof(proof *Proof, challenge [32]byte, difficultyTarget uint64) bool
 	// Check difficulty (v1.1.1: quality <= difficulty to win, lower is better)
 	return quality <= difficultyTarget
 }
-
