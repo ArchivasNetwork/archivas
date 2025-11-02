@@ -39,7 +39,8 @@ scrape_configs:
     metrics_path: '/metrics'
     static_configs:
       - targets:
-          - '57.129.148.132:9102'
+          - '57.129.148.132:9102'  # Server A farmer (1 k28 plot)
+          - '57.129.148.134:9102'  # Server C farmer (6 k28 plots)
         labels:
           network: 'archivas-devnet-v3'
           instance_type: 'farmer'

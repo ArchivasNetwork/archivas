@@ -1,6 +1,6 @@
 #!/bin/bash
 # v1.1.1: Firewall rules for Prometheus scraping
-# Run this on each target host (57.129.148.132 and 72.251.11.191)
+# Run this on each target host (57.129.148.132, 72.251.11.191, 57.129.148.134)
 
 PROM_IP="57.129.148.132"  # Prometheus server IP
 

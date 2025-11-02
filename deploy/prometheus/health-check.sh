@@ -37,14 +37,18 @@ echo ""
 
 # Check farmers
 echo "🌾 Farmers (port 9102):"
-check_endpoint "Farmer 1" "http://57.129.148.132:9102/metrics"
+check_endpoint "Farmer A" "http://57.129.148.132:9102/metrics"
+check_endpoint "Farmer C" "http://57.129.148.134:9102/metrics"
 echo ""
 
 # Check health endpoints
 echo "🏥 Health endpoints:"
-check_endpoint "Node 1 health" "http://57.129.148.132:8080/healthz"
-check_endpoint "Timelord 1 health" "http://57.129.148.132:9101/healthz"
-check_endpoint "Farmer 1 health" "http://57.129.148.132:9102/healthz"
+check_endpoint "Node A health" "http://57.129.148.132:8080/healthz"
+check_endpoint "Node B health" "http://72.251.11.191:8080/healthz"
+check_endpoint "Timelord A health" "http://57.129.148.132:9101/healthz"
+check_endpoint "Timelord B health" "http://72.251.11.191:9101/healthz"
+check_endpoint "Farmer A health" "http://57.129.148.132:9102/healthz"
+check_endpoint "Farmer C health" "http://57.129.148.134:9102/healthz"
 echo ""
 
 echo "✅ Health check complete"
