@@ -13,6 +13,7 @@ import (
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/iljanemesis/archivas/config"
+	"github.com/iljanemesis/archivas/internal/buildinfo"
 	"github.com/iljanemesis/archivas/ledger"
 	"github.com/iljanemesis/archivas/mempool"
 	"github.com/iljanemesis/archivas/metrics"
@@ -596,16 +597,15 @@ func (s *FarmingServer) handleVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := struct {
-		Version   string `json:"version"`
-		Commit    string `json:"commit"`
-		Network   string `json:"network"`
-		Consensus string `json:"consensus"`
-	}{
-		Version:   "v0.8.1-alpha",
-		Commit:    "662430d",
-		Network:   "archivas-devnet-v3",
-		Consensus: "Proof-of-Space-and-Time",
+	buildInfo := buildinfo.GetInfo()
+
+	response := map[string]interface{}{
+		"version":     buildInfo["version"],
+		"commit":      buildInfo["commit"],
+		"builtAt":     buildInfo["builtAt"],
+		"poSpaceRule": buildInfo["poSpaceRule"],
+		"network":     "archivas-devnet-v4",
+		"consensus":   "Proof-of-Space-and-Time",
 	}
 
 	w.Header().Set("Content-Type", "application/json")

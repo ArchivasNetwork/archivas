@@ -8,6 +8,43 @@ import (
 	"os"
 )
 
+// SelfTest verifies PoSpace verification logic is correct
+// v1.1.1: Ensures quality <= difficulty rule is enforced
+func SelfTest() error {
+	// Test vectors
+	challenge := [32]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
+	plotHash := [32]byte{0xde, 0xad, 0xbe, 0xef, 0xca, 0xfe, 0xba, 0xbe, 0xfe, 0xed, 0xfa, 0xce, 0, 0x11, 0x22, 0x33}
+	
+	q := computeQuality(challenge, plotHash)
+	
+	// Create test proof
+	proof := &Proof{
+		Challenge:    challenge,
+		PlotID:       [32]byte{},
+		Index:        0,
+		Hash:         plotHash,
+		Quality:      q,
+		FarmerPubKey: [33]byte{},
+	}
+	
+	// Test 1: quality == difficulty should PASS
+	if !VerifyProof(proof, challenge, q) {
+		return fmt.Errorf("PoSpace verify should pass when difficulty==quality; q=%d", q)
+	}
+	
+	// Test 2: quality < difficulty should PASS
+	if !VerifyProof(proof, challenge, q+1000) {
+		return fmt.Errorf("PoSpace verify should pass when quality<difficulty; q=%d, diff=%d", q, q+1000)
+	}
+	
+	// Test 3: quality > difficulty should FAIL
+	if q > 1000 && VerifyProof(proof, challenge, q-1000) {
+		return fmt.Errorf("PoSpace verify MUST fail when quality>difficulty; q=%d, diff=%d", q, q-1000)
+	}
+	
+	return nil
+}
+
 const (
 	// PlotMagic is the magic number at the start of plot files
 	PlotMagic = uint32(0x41524356) // "ARCV" in hex

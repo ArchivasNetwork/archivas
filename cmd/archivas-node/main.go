@@ -15,6 +15,7 @@ import (
 	"github.com/iljanemesis/archivas/config"
 	"github.com/iljanemesis/archivas/consensus"
 	"github.com/iljanemesis/archivas/health"
+	"github.com/iljanemesis/archivas/internal/buildinfo"
 	"github.com/iljanemesis/archivas/ledger"
 	"github.com/iljanemesis/archivas/logging"
 	"github.com/iljanemesis/archivas/mempool"
@@ -71,6 +72,17 @@ type NodeState struct {
 
 func main() {
 	logging.ConfigureJSON("archivas-node")
+
+	// Log build info and run self-test
+	buildInfo := buildinfo.GetInfo()
+	log.Printf("[build] version=%s commit=%s built=%s rule=%s",
+		buildInfo["version"], buildInfo["commit"], buildInfo["builtAt"], buildInfo["poSpaceRule"])
+
+	// Run PoSpace self-test
+	if err := pospace.SelfTest(); err != nil {
+		log.Fatalf("[FATAL] PoSpace self-test failed: %v", err)
+	}
+	log.Println("[build] PoSpace self-test passed ✓")
 
 	// Parse CLI flags
 	rpcAddr := flag.String("rpc", ":8080", "RPC listen address")
