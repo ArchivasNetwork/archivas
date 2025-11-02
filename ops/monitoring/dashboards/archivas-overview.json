@@ -39,15 +39,21 @@
     },
     {
       "id": 4,
-      "title": "Blocks Mined",
+      "title": "Blocks Mined (Last 5m)",
       "type": "stat",
       "targets": [
         {
-          "expr": "archivas_blocks_total",
+          "expr": "increase(archivas_blocks_total[5m])",
           "legendFormat": "{{instance}}"
         }
       ],
-      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0}
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        }
+      }
     },
     {
       "id": 5,
