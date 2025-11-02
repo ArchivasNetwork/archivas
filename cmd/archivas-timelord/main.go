@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/iljanemesis/archivas/logging"
+	"github.com/iljanemesis/archivas/metrics"
 	"github.com/iljanemesis/archivas/vdf"
 )
 
@@ -39,6 +41,8 @@ func main() {
 	// Parse CLI flags
 	nodeURL := flag.String("node", "http://localhost:8080", "Node RPC URL")
 	stepSize := flag.Uint64("step", 500, "VDF iterations per tick")
+	// v1.1.1: Metrics server address (default: 0.0.0.0:9101)
+	metricsAddr := flag.String("metrics-addr", "0.0.0.0:9101", "Metrics server listen address")
 	flag.Parse()
 
 	log.Println("[timelord] Archivas Timelord starting...")
@@ -46,6 +50,13 @@ func main() {
 	log.Printf("[timelord] Step size: %d iterations/tick", *stepSize)
 	log.Printf("[timelord] Will poll: %s/chainTip", *nodeURL)
 	log.Printf("[timelord] Will POST to: %s/vdf/update", *nodeURL)
+
+	// v1.1.1: Start metrics server
+	metricsServer := metrics.NewServer(*metricsAddr)
+	if metricsServer != nil {
+		metricsServer.Start()
+		defer metricsServer.Stop(context.Background())
+	}
 
 	var currentSeed []byte
 	var currentIterations uint64

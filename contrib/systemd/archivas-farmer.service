@@ -16,7 +16,10 @@ EnvironmentFile=/etc/archivas/farmer.env
 ExecStart=/opt/archivas/archivas-farmer farm \
   --plots /opt/archivas/plots \
   --node http://localhost:8080 \
-  --farmer-privkey ${FARMER_PRIVKEY}
+  --farmer-privkey ${FARMER_PRIVKEY} \
+  --metrics-addr 0.0.0.0:9102
+
+# v1.1.1: Metrics server on port 9102 (prometheus scrape target)
 
 Restart=always
 RestartSec=5

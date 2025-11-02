@@ -180,4 +180,3 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"status":"ok","message":"Archivas Devnet RPC Server"}`)
 }
-

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/iljanemesis/archivas/logging"
+	"github.com/iljanemesis/archivas/metrics"
 	"github.com/iljanemesis/archivas/pospace"
 	"github.com/iljanemesis/archivas/wallet"
 )
@@ -130,6 +132,8 @@ func cmdFarm() {
 	plotsDir := farmFlags.String("plots", "./plots", "Plots directory")
 	nodeURL := farmFlags.String("node", "http://localhost:8080", "Node RPC URL")
 	farmerPrivKeyHex := farmFlags.String("farmer-privkey", "", "Farmer PRIVATE key (32 bytes hex) ⚠️ KEEP SECRET!")
+	// v1.1.1: Metrics server address (default: 0.0.0.0:9102)
+	metricsAddr := farmFlags.String("metrics-addr", "0.0.0.0:9102", "Metrics server listen address")
 
 	farmFlags.Parse(os.Args[2:])
 
@@ -159,6 +163,13 @@ func cmdFarm() {
 	fmt.Printf("📁 Plots Directory: %s\n", *plotsDir)
 	fmt.Printf("🌐 Node: %s\n", *nodeURL)
 	fmt.Println()
+
+	// v1.1.1: Start metrics server
+	metricsServer := metrics.NewServer(*metricsAddr)
+	if metricsServer != nil {
+		metricsServer.Start()
+		defer metricsServer.Stop(context.Background())
+	}
 
 	// Load plots
 	plots, err := loadPlots(*plotsDir)

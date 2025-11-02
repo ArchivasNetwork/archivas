@@ -95,8 +95,14 @@ func main() {
 	fmt.Println("Archivas Devnet Node running…")
 	fmt.Println()
 
+	// v1.1.1: Ensure RPC binds to 0.0.0.0 if no host specified (for metrics scraping)
+	rpcBindAddr := *rpcAddr
+	if strings.HasPrefix(rpcBindAddr, ":") {
+		rpcBindAddr = "0.0.0.0" + rpcBindAddr
+	}
+
 	fmt.Printf("🔧 Configuration:\n")
-	fmt.Printf("   RPC:  %s\n", *rpcAddr)
+	fmt.Printf("   RPC:  %s\n", rpcBindAddr)
 	fmt.Printf("   P2P:  %s\n", *p2pAddr)
 	if *peerAddrs != "" {
 		fmt.Printf("   Peers: %s\n", *peerAddrs)
@@ -415,9 +421,9 @@ func main() {
 	log.Println("[DEBUG] Starting RPC server...")
 	server := rpc.NewFarmingServer(nodeState.WorldState, nodeState.Mempool, nodeState)
 	go func() {
-		log.Printf("[rpc] starting server on %s", *rpcAddr)
-		fmt.Printf("🌐 Starting RPC server on %s\n", *rpcAddr)
-		if err := server.Start(*rpcAddr); err != nil {
+		log.Printf("[rpc] starting server on %s", rpcBindAddr)
+		fmt.Printf("🌐 Starting RPC server on %s\n", rpcBindAddr)
+		if err := server.Start(rpcBindAddr); err != nil {
 			log.Fatalf("[rpc] server error: %v", err)
 		}
 	}()

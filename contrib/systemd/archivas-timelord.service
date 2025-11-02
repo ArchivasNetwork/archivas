@@ -12,7 +12,10 @@ WorkingDirectory=/opt/archivas
 
 ExecStart=/opt/archivas/archivas-timelord \
   --node http://localhost:8080 \
-  --step 500
+  --step 500 \
+  --metrics-addr 0.0.0.0:9101
+
+# v1.1.1: Metrics server on port 9101 (prometheus scrape target)
 
 Restart=always
 RestartSec=5

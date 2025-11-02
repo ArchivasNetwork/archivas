@@ -1,0 +1,46 @@
+# Prometheus configuration for Archivas network
+# v1.1.1: Updated scrape configs with correct ports and labels
+
+global:
+  scrape_interval: 10s
+  evaluation_interval: 10s
+  external_labels:
+    cluster: 'archivas-devnet'
+    network: 'archivas-devnet-v3'
+
+scrape_configs:
+  # Archivas nodes - metrics exposed on RPC port (8080)
+  - job_name: 'archivas-nodes'
+    scrape_interval: 10s
+    metrics_path: '/metrics'
+    static_configs:
+      - targets:
+          - '57.129.148.132:8080'
+          - '72.251.11.191:8080'
+        labels:
+          network: 'archivas-devnet-v3'
+          instance_type: 'node'
+
+  # Archivas timelords - metrics on port 9101
+  - job_name: 'archivas-timelords'
+    scrape_interval: 10s
+    metrics_path: '/metrics'
+    static_configs:
+      - targets:
+          - '57.129.148.132:9101'
+          - '72.251.11.191:9101'
+        labels:
+          network: 'archivas-devnet-v3'
+          instance_type: 'timelord'
+
+  # Archivas farmers - metrics on port 9102
+  - job_name: 'archivas-farmers'
+    scrape_interval: 10s
+    metrics_path: '/metrics'
+    static_configs:
+      - targets:
+          - '57.129.148.132:9102'
+        labels:
+          network: 'archivas-devnet-v3'
+          instance_type: 'farmer'
+

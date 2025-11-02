@@ -246,8 +246,8 @@ func (e *Explorer) getChainTip() (*ChainInfo, error) {
 		Height     string `json:"height"`     // u64 as string
 		Difficulty string `json:"difficulty"` // u64 as string
 		// Legacy fields for backward compatibility
-		BlockHash  []byte `json:"blockHash,omitempty"`
-		HeightNum  uint64 `json:"heightNum,omitempty"`
+		BlockHash     []byte `json:"blockHash,omitempty"`
+		HeightNum     uint64 `json:"heightNum,omitempty"`
 		DifficultyNum uint64 `json:"difficultyNum,omitempty"`
 	}
 
