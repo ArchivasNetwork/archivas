@@ -5,12 +5,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/iljanemesis/archivas/logging"
@@ -25,8 +27,11 @@ const (
 )
 
 type ChainTipResponse struct {
-	BlockHash [32]byte `json:"blockHash"`
-	Height    uint64   `json:"height"`
+	Hash      string `json:"hash"`      // v1.1.0: hex string
+	Height    string `json:"height"`    // v1.1.0: u64 as string
+	// Legacy fields for backward compatibility
+	BlockHash []byte `json:"blockHash,omitempty"`
+	HeightNum uint64 `json:"heightNum,omitempty"`
 }
 
 type VDFUpdateRequest struct {
@@ -73,12 +78,30 @@ func main() {
 			continue
 		}
 
+		// Parse height for seed computation
+		height, err := strconv.ParseUint(tip.Height, 10, 64)
+		if err != nil {
+			log.Printf("[timelord] ⚠️  Invalid height: %v", err)
+			continue
+		}
+
+		// Parse block hash
+		var blockHash [32]byte
+		if tip.Hash != "" {
+			hashBytes, err := hex.DecodeString(tip.Hash)
+			if err == nil && len(hashBytes) == 32 {
+				copy(blockHash[:], hashBytes)
+			}
+		} else if len(tip.BlockHash) == 32 {
+			copy(blockHash[:], tip.BlockHash)
+		}
+
 		// Compute new seed
-		newSeed := computeSeed(tip.BlockHash, tip.Height)
+		newSeed := computeSeed(blockHash, height)
 
 		// Check if we need to reset (new tip)
 		if !bytes.Equal(newSeed, currentSeed) {
-			log.Printf("[timelord] 🔄 New tip detected: height=%d hash=%x", tip.Height, tip.BlockHash[:8])
+			log.Printf("[timelord] 🔄 New tip detected: height=%d hash=%x", height, blockHash[:8])
 			log.Printf("[timelord] 🌱 Resetting VDF seed: %x", newSeed[:8])
 			currentSeed = newSeed
 			currentIterations = 0
@@ -120,7 +143,48 @@ func getChainTip(nodeURL string) (*ChainTipResponse, error) {
 		return nil, fmt.Errorf("failed to decode response from %s: %w", url, err)
 	}
 
-	return &tip, nil
+	// v1.1.1: Parse height from string (v1.1.0 format)
+	var height uint64
+	var blockHash [32]byte
+
+	if tip.Height != "" {
+		// v1.1.0 format: parse from string
+		var err error
+		height, err = strconv.ParseUint(tip.Height, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid height: %v", err)
+		}
+	} else if tip.HeightNum != 0 {
+		// Legacy format
+		height = tip.HeightNum
+	} else {
+		return nil, fmt.Errorf("missing height")
+	}
+
+	if tip.Hash != "" {
+		// v1.1.0 format: hash is hex string
+		hashBytes, err := hex.DecodeString(tip.Hash)
+		if err != nil {
+			return nil, fmt.Errorf("invalid hash: %v", err)
+		}
+		if len(hashBytes) != 32 {
+			return nil, fmt.Errorf("hash must be 32 bytes")
+		}
+		copy(blockHash[:], hashBytes)
+	} else if len(tip.BlockHash) == 32 {
+		// Legacy format
+		copy(blockHash[:], tip.BlockHash)
+	} else {
+		return nil, fmt.Errorf("missing block hash")
+	}
+
+	// Return normalized response
+	return &ChainTipResponse{
+		Height:    fmt.Sprintf("%d", height),
+		Hash:      tip.Hash,
+		BlockHash: blockHash[:],
+		HeightNum: height,
+	}, nil
 }
 
 func computeSeed(blockHash [32]byte, height uint64) []byte {
