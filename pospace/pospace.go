@@ -177,8 +177,8 @@ func (p *PlotFile) CheckChallenge(challenge [32]byte, difficultyTarget uint64) (
 			}
 		}
 
-		// Early exit if we found a winner
-		if quality < difficultyTarget {
+		// Early exit if we found a winner (v1.1.1: use <= for consistency)
+		if quality <= difficultyTarget {
 			return bestProof, nil
 		}
 	}
@@ -230,7 +230,7 @@ func VerifyProof(proof *Proof, challenge [32]byte, difficultyTarget uint64) bool
 		return false
 	}
 
-	// Check difficulty
-	return quality < difficultyTarget
+	// Check difficulty (v1.1.1: quality <= difficulty to win, lower is better)
+	return quality <= difficultyTarget
 }
 
