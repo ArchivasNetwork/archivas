@@ -8,6 +8,7 @@ import (
 type MessageType uint8
 
 const (
+	MsgTypeHandshake   MessageType = 0  // v1.1.1: First message, validates compatibility
 	MsgTypePing        MessageType = 1
 	MsgTypePong        MessageType = 2
 	MsgTypeNewBlock    MessageType = 3
@@ -115,4 +116,14 @@ type BlocksBatchMessage struct {
 	Blocks     []json.RawMessage `json:"blocks"`     // Block data (JSON serialized)
 	TipHeight  uint64            `json:"tipHeight"`  // Sender's current tip (for progress tracking)
 	EOF        bool              `json:"eof"`        // true if this is the last batch (caught up)
+}
+
+// HandshakeMessage validates peer compatibility before allowing connection
+// v1.1.1: Prevents incompatible nodes from connecting
+type HandshakeMessage struct {
+	GenesisHash        [32]byte `json:"genesisHash"`        // Must match exactly
+	NetworkID          string   `json:"networkID"`          // Must match exactly
+	ProtocolVersion    string   `json:"protocolVersion"`    // Must be compatible
+	DifficultyParamsID string   `json:"difficultyParamsID"` // Must match exactly
+	NodeVersion        string   `json:"nodeVersion"`        // For logging/debugging
 }

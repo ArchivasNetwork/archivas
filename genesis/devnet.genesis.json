@@ -1,10 +1,14 @@
 {
-  "chainName": "Archivas Devnet",
+  "chainName": "Archivas Devnet V4",
   "chainID": 1616,
   "denom": "RCHV",
   "decimals": 8,
   "timestamp": 1730246400,
-  "seed": "archivas-devnet-v1-2025-10-29",
+  "seed": "archivas-devnet-v4-2025-11-02",
+  "networkID": "archivas-devnet-v4",
+  "protocolVersion": "v1.1.1-ibd",
+  "difficultyParamsID": "v2-normalized-qmax1e12",
+  "initialDifficulty": 15000000,
   "allocations": [
     {
       "address": "arcv1zramsn568zt3cwc8ny995u3dhpz5rpuamx2jz7",
