@@ -26,10 +26,34 @@ Production bootstrap node with HTTPS, HTTP/2, and full v1.1.0 API support.
    - Sudo privileges
    - Ports 80 and 443 must be accessible
 
-3. **Running Node**
-   - Archivas node must be running on `localhost:8080`
+3. **Firewall Configuration**
+   ```bash
+   # Allow public HTTP/HTTPS
+   sudo ufw allow 80/tcp comment "HTTP for ACME"
+   sudo ufw allow 443/tcp comment "HTTPS public RPC"
+   
+   # DENY direct access to node RPC (localhost only)
+   sudo ufw deny 8080/tcp comment "Block external RPC access"
+   
+   # Allow P2P (if serving as bootnode)
+   sudo ufw allow 9090/tcp comment "Archivas P2P"
+   ```
+
+4. **Running Node**
+   - Archivas node must be running on `localhost:8080` (NOT `0.0.0.0`)
    - Version: v1.1.0 (Wallet API Freeze)
    - Network: archivas-devnet-v3
+   
+   **Critical:** Bind RPC to localhost only:
+   ```bash
+   ./archivas-node \
+     --rpc 127.0.0.1:8080 \
+     --p2p :9090 \
+     --genesis genesis/devnet.genesis.json \
+     --network-id archivas-devnet-v3
+   ```
+   
+   **Never use:** `--rpc 0.0.0.0:8080` (exposes RPC to internet)
 
 ---
 
@@ -168,25 +192,37 @@ bash scripts/check-seed.sh
 ```bash
 # Version:
 curl https://seed.archivas.ai/version
+# Expected: {"version":"v1.1.0",...}
 
 # Chain tip:
 curl https://seed.archivas.ai/chainTip
+# Expected: {"height":"13080","hash":"...","difficulty":"1000000"}
 
 # Account balance:
 curl https://seed.archivas.ai/account/arcv1zramsn568zt3cwc8ny995u3dhpz5rpuamx2jz7
+# Expected: {"address":"arcv1...","balance":"...","nonce":"0"}
 
 # Mempool:
 curl https://seed.archivas.ai/mempool
+# Expected: [] (array of tx hashes)
 
-# Submit (should return 405 for GET):
+# Submit GET (should return 405):
 curl -i https://seed.archivas.ai/submit
-# Expect: HTTP/2 405
-#         allow: POST
+# Expected: HTTP/2 405
+#           allow: POST
 
-# OPTIONS preflight:
+# Submit OPTIONS preflight:
 curl -i -X OPTIONS https://seed.archivas.ai/submit
-# Expect: HTTP/2 204
-#         access-control-allow-methods: GET,POST,OPTIONS
+# Expected: HTTP/2 204
+#           access-control-allow-methods: POST,OPTIONS
+
+# Verify /metrics is blocked:
+curl -i https://seed.archivas.ai/metrics
+# Expected: HTTP/2 404
+
+# Verify node RPC is NOT externally accessible:
+curl http://57.129.148.132:8080/chainTip
+# Expected: Connection refused (port blocked by firewall)
 ```
 
 ### From SDK
@@ -351,11 +387,56 @@ Internet
 DNS (seed.archivas.ai → 57.129.148.132)
    ↓
 Nginx (:80 redirect, :443 TLS termination)
+   │
+   ├─ Rate limiting (10 req/min on /submit)
+   ├─ CORS headers
+   ├─ Block /metrics (internal only)
+   │
    ↓
-Archivas Node RPC (localhost:8080)
+Archivas Node RPC (127.0.0.1:8080 - localhost ONLY)
    ↓
-Blockchain + P2P
+Blockchain + P2P (:9090)
 ```
+
+**Security Layers:**
+1. Nginx blocks `/metrics` from public access
+2. Node RPC bound to `127.0.0.1` only (not accessible externally)
+3. Rate limiting on `/submit` (10 req/min per IP, burst 5)
+4. Firewall blocks port 8080 from external access
+5. TLS 1.2+ with modern ciphers only
+
+---
+
+## Advanced Configuration
+
+### Rate Limiting (Optional Enhancement)
+
+The default Nginx config includes rate limiting for `/submit`. To adjust:
+
+```nginx
+# In deploy/seed/nginx-site.conf at top level:
+limit_req_zone $binary_remote_addr zone=submit:10m rate=10r/m;
+
+# In location = /submit:
+limit_req zone=submit burst=5 nodelay;
+```
+
+Adjust `rate=10r/m` (requests per minute) and `burst=5` as needed.
+
+### Node Configuration for Seed Host
+
+Optional: Configure node to advertise as bootnode:
+
+```bash
+./archivas-node \
+  --rpc 127.0.0.1:8080 \
+  --p2p :9090 \
+  --advertised-addr seed.archivas.ai:9090 \
+  --genesis genesis/devnet.genesis.json \
+  --network-id archivas-devnet-v3
+```
+
+This allows other nodes to discover and connect via DNS.
 
 ---
 
