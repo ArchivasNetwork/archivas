@@ -2,6 +2,46 @@
 
 > **A Proof-of-Space-and-Time L1 Blockchain. Farm RCHV with disk space.**
 
+---
+
+## 🌍 Public RPC
+
+**Endpoint:** `https://seed.archivas.ai`
+
+Archivas provides a public RPC endpoint for developers to interact with the testnet.
+
+### Available Routes
+
+- `GET /account/<address>` - Get account balance and nonce
+- `GET /chainTip` - Get current blockchain height, hash, and difficulty
+- `GET /mempool` - List pending transactions
+- `GET /tx/<hash>` - Get transaction details
+- `GET /estimateFee?bytes=<n>` - Estimate transaction fee
+- `POST /submit` - Submit a signed transaction (JSON, CORS-enabled)
+
+### Examples
+
+```bash
+# Get chain tip
+curl https://seed.archivas.ai/chainTip
+# {"height":"13080","hash":"87e0cf03151c2debd7dab3d7143eb24f8f0281826e13ab49aaf3259c303a2810","difficulty":"1000000"}
+
+# Get account balance
+curl https://seed.archivas.ai/account/arcv1zramsn568zt3cwc8ny995u3dhpz5rpuamx2jz7
+# {"address":"arcv1...","balance":"137540000000000","nonce":"0"}
+
+# Attempt GET on /submit (returns 405 Method Not Allowed)
+curl -i https://seed.archivas.ai/submit
+# HTTP/2 405
+# allow: POST
+```
+
+**Note:** The `/submit` endpoint only accepts POST requests with `Content-Type: application/json`.
+
+For setup and deployment details, see [docs/SEED_HOST.md](docs/SEED_HOST.md).
+
+---
+
 [![Build Status](https://github.com/iljanemesis/archivas/workflows/Build%20and%20Test/badge.svg)](https://github.com/iljanemesis/archivas/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Version](https://img.shields.io/badge/go-1.21+-blue.svg)](https://golang.org)
