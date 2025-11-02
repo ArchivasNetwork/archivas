@@ -46,6 +46,34 @@ func (bs *BlockStorage) HasBlock(height uint64) bool {
 	return bs.db.Has(key)
 }
 
+// GetBlocksRange retrieves a range of blocks from disk
+// Returns blocks [start, start+limit) and the next height to request
+// If next > tip, caller should stop (caught up)
+func (bs *BlockStorage) GetBlocksRange(start, limit uint64) ([]interface{}, uint64, error) {
+	if limit == 0 || limit > 2048 {
+		limit = 512 // Default batch size, cap at 2048
+	}
+
+	blocks := make([]interface{}, 0, limit)
+	
+	for h := start; h < start+limit; h++ {
+		key := makeBlockKey(h)
+		if !bs.db.Has(key) {
+			// Reached end of available blocks
+			return blocks, h, nil
+		}
+		
+		var blockData interface{}
+		if err := bs.db.GetJSON(key, &blockData); err != nil {
+			return blocks, h, fmt.Errorf("failed to read block %d: %w", h, err)
+		}
+		
+		blocks = append(blocks, blockData)
+	}
+	
+	return blocks, start + limit, nil
+}
+
 // AccountState represents stored account state
 type AccountState struct {
 	Balance int64  `json:"balance"`

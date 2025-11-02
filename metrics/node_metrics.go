@@ -56,11 +56,7 @@ var (
 		Buckets: prometheus.DefBuckets,
 	})
 
-	// IBDInflight tracks blocks being downloaded during IBD
-	IBDInflight = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "archivas_ibd_inflight",
-		Help: "Number of blocks currently being downloaded",
-	})
+	// IBDInflight moved to ibd_metrics.go (v1.1.1)
 
 	// RPCRequests counts RPC requests by endpoint
 	RPCRequests = promauto.NewCounterVec(

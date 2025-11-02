@@ -21,6 +21,9 @@ const (
 	MsgTypeReq         MessageType = 10 // Request data
 	MsgTypeRes         MessageType = 11 // Response with data
 	MsgTypeTxBroadcast MessageType = 12 // Transaction broadcast
+	// v1.1.1: Efficient IBD
+	MsgTypeRequestBlocks MessageType = 13 // Request block range
+	MsgTypeBlocksBatch   MessageType = 14 // Batch of blocks
 )
 
 // Message represents a P2P protocol message
@@ -95,4 +98,21 @@ type ResMessage struct {
 type TxBroadcastMessage struct {
 	TxHash string          `json:"txHash"`
 	TxData json.RawMessage `json:"txData"`
+}
+
+// RequestBlocksMessage requests a range of blocks for IBD
+// v1.1.1: Batched sync for efficient initial block download
+type RequestBlocksMessage struct {
+	FromHeight uint64 `json:"fromHeight"` // Starting height (inclusive)
+	MaxBlocks  uint32 `json:"maxBlocks"`  // Batch size hint (capped at 512)
+}
+
+// BlocksBatchMessage contains a batch of blocks
+// v1.1.1: Response to RequestBlocks for efficient IBD
+type BlocksBatchMessage struct {
+	FromHeight uint64            `json:"fromHeight"` // First block height in this batch
+	Count      uint32            `json:"count"`      // Number of blocks in this batch
+	Blocks     []json.RawMessage `json:"blocks"`     // Block data (JSON serialized)
+	TipHeight  uint64            `json:"tipHeight"`  // Sender's current tip (for progress tracking)
+	EOF        bool              `json:"eof"`        // true if this is the last batch (caught up)
 }

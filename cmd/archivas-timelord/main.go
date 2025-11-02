@@ -27,8 +27,8 @@ const (
 )
 
 type ChainTipResponse struct {
-	Hash      string `json:"hash"`      // v1.1.0: hex string
-	Height    string `json:"height"`    // v1.1.0: u64 as string
+	Hash   string `json:"hash"`   // v1.1.0: hex string
+	Height string `json:"height"` // v1.1.0: u64 as string
 	// Legacy fields for backward compatibility
 	BlockHash []byte `json:"blockHash,omitempty"`
 	HeightNum uint64 `json:"heightNum,omitempty"`

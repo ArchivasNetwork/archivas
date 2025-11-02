@@ -42,6 +42,11 @@ type Network struct {
 	dialing           map[string]bool // addresses currently being dialed
 	knownPeers        map[string]int64 // all known peers with last seen timestamp
 	dialingSem        chan struct{} // rate limiter for new connections
+	
+	// v1.1.1: IBD state
+	ibdInflight       int           // Number of concurrent IBD streams
+	ibdMaxConcurrent  int           // Max concurrent IBD streams (default: 2)
+	ibdBatchSize      uint32        // Batch size for IBD (default: 512)
 }
 
 // NodeHandler interface for node callbacks
@@ -53,6 +58,8 @@ type NodeHandler interface {
 	LocalHeight() uint64
 	HasBlock(height uint64) bool
 	VerifyAndApplyBlock(blockJSON json.RawMessage) error
+	// v1.1.1: Batch block requests for IBD
+	OnBlocksRangeRequest(fromHeight uint64, maxBlocks uint32) (blocks []json.RawMessage, tipHeight uint64, eof bool, err error)
 }
 
 // GossipConfig holds configuration for peer gossip
@@ -82,6 +89,12 @@ func NewNetwork(listenAddr string, handler NodeHandler) *Network {
 		
 		dialing:    make(map[string]bool),
 		knownPeers: make(map[string]int64),
+		dialingSem: make(chan struct{}, 1),
+		
+		// v1.1.1: IBD config
+		ibdInflight:      0,
+		ibdMaxConcurrent: 2,
+		ibdBatchSize:     512,
 	}
 }
 
@@ -399,6 +412,10 @@ func (n *Network) handleMessage(peer *Peer, msg *Message) {
 		n.handleStatus(peer, msg.Payload)
 	case MsgTypeGossipPeers:
 		n.handleGossipPeers(peer, msg.Payload)
+	case MsgTypeRequestBlocks:
+		n.handleRequestBlocks(peer, msg.Payload)
+	case MsgTypeBlocksBatch:
+		n.handleBlocksBatch(peer, msg.Payload)
 	default:
 		log.Printf("[p2p] unknown message type %d from %s", msg.Type, peer.Address)
 	}

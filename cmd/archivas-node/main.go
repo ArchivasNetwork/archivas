@@ -641,11 +641,23 @@ func (ns *NodeState) OnNewBlock(height uint64, hash [32]byte, fromPeer string) {
 	currentHeight := ns.CurrentHeight
 	ns.RUnlock()
 
-	// If we're behind, request the block
+	// If we're behind, request blocks
 	if height > currentHeight {
-		log.Printf("[p2p] We're behind (our height=%d, peer height=%d), requesting block", currentHeight, height)
-		if ns.P2P != nil {
-			ns.P2P.RequestBlock(height)
+		gap := height - currentHeight
+		
+		// v1.1.1: Use batched IBD for large gaps (>10 blocks)
+		if gap > 10 {
+			log.Printf("[p2p] We're behind by %d blocks (our=%d, peer=%d), starting IBD", 
+				gap, currentHeight, height)
+			if ns.P2P != nil {
+				ns.P2P.StartIBD(currentHeight+1)
+			}
+		} else {
+			// Small gap, use single block requests
+			log.Printf("[p2p] We're behind (our height=%d, peer height=%d), requesting block", currentHeight, height)
+			if ns.P2P != nil {
+				ns.P2P.RequestBlock(height)
+			}
 		}
 	}
 }
@@ -654,11 +666,93 @@ func (ns *NodeState) OnBlockRequest(height uint64) (interface{}, error) {
 	ns.RLock()
 	defer ns.RUnlock()
 
-	if int(height) >= len(ns.Chain) {
-		return nil, fmt.Errorf("block not found")
+	// v1.1.1: Try memory first, then disk
+	if int(height) < len(ns.Chain) {
+		return ns.Chain[height], nil
 	}
 
-	return ns.Chain[height], nil
+	// Load from disk
+	if ns.BlockStore != nil {
+		var block Block
+		if err := ns.BlockStore.LoadBlock(height, &block); err == nil {
+			return block, nil
+		}
+	}
+
+	return nil, fmt.Errorf("block not found")
+}
+
+// OnBlocksRangeRequest serves a batch of blocks for IBD
+// v1.1.1: Efficient disk-based block serving
+func (ns *NodeState) OnBlocksRangeRequest(fromHeight uint64, maxBlocks uint32) (blocks []json.RawMessage, tipHeight uint64, eof bool, err error) {
+	ns.RLock()
+	defer ns.RUnlock()
+
+	// Get current tip
+	tipHeight = ns.CurrentHeight
+
+	// Cap batch size
+	if maxBlocks == 0 || maxBlocks > 512 {
+		maxBlocks = 512
+	}
+
+	// Ensure fromHeight is valid
+	if fromHeight < 1 {
+		fromHeight = 1
+	}
+
+	// If requesting beyond tip, return empty with EOF
+	if fromHeight > tipHeight {
+		return []json.RawMessage{}, tipHeight, true, nil
+	}
+
+	// Calculate how many blocks to serve
+	remaining := tipHeight - fromHeight + 1
+	count := uint64(maxBlocks)
+	if count > remaining {
+		count = remaining
+		eof = true // This is the last batch
+	}
+
+	blocks = make([]json.RawMessage, 0, count)
+
+	// Serve blocks from memory or disk
+	for h := fromHeight; h < fromHeight+count; h++ {
+		var block Block
+		
+		// Try memory first
+		if int(h) < len(ns.Chain) {
+			block = ns.Chain[h]
+		} else if ns.BlockStore != nil {
+			// Load from disk
+			if err := ns.BlockStore.LoadBlock(h, &block); err != nil {
+				log.Printf("[ibd] failed to load block %d from disk: %v", h, err)
+				// Return what we have so far
+				break
+			}
+		} else {
+			// Block not available
+			break
+		}
+
+		// Serialize block to JSON
+		blockJSON, err := json.Marshal(block)
+		if err != nil {
+			log.Printf("[ibd] failed to marshal block %d: %v", h, err)
+			break
+		}
+
+		blocks = append(blocks, blockJSON)
+	}
+
+	// If we got fewer blocks than expected, not at EOF yet
+	if uint64(len(blocks)) < count {
+		eof = false
+	}
+
+	log.Printf("[ibd] serving range from=%d count=%d tip=%d eof=%v", fromHeight, len(blocks), tipHeight, eof)
+
+	return blocks, tipHeight, eof, nil
 }
 
 func (ns *NodeState) GetStatus() (uint64, uint64, [32]byte) {
