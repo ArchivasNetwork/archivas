@@ -979,6 +979,25 @@ func (ns *NodeState) GetRecentBlocks(count int) interface{} {
 	for i := start; i < chainLen; i++ {
 		block := ns.Chain[i]
 		blockHash := hashBlock(&block)
+
+		// Format transactions with type field
+		formattedTxs := make([]map[string]interface{}, len(block.Txs))
+		for j, tx := range block.Txs {
+			txType := "transfer"
+			if tx.From == "coinbase" {
+				txType = "coinbase"
+			}
+
+			formattedTxs[j] = map[string]interface{}{
+				"type":   txType,
+				"from":   tx.From,
+				"to":     tx.To,
+				"amount": tx.Amount,
+				"fee":    tx.Fee,
+				"nonce":  tx.Nonce,
+			}
+		}
+
 		recentBlocks = append(recentBlocks, map[string]interface{}{
 			"height":     block.Height,
 			"hash":       hex.EncodeToString(blockHash[:]),
@@ -986,6 +1005,7 @@ func (ns *NodeState) GetRecentBlocks(count int) interface{} {
 			"difficulty": block.Difficulty,
 			"farmerAddr": block.FarmerAddr,
 			"txCount":    len(block.Txs),
+			"txs":        formattedTxs,
 		})
 	}
 
@@ -1004,6 +1024,24 @@ func (ns *NodeState) GetBlockByHeight(height uint64) (interface{}, error) {
 	block := ns.Chain[height]
 	blockHash := hashBlock(&block)
 
+	// Format transactions with type field
+	formattedTxs := make([]map[string]interface{}, len(block.Txs))
+	for i, tx := range block.Txs {
+		txType := "transfer"
+		if tx.From == "coinbase" {
+			txType = "coinbase"
+		}
+
+		formattedTxs[i] = map[string]interface{}{
+			"type":   txType,
+			"from":   tx.From,
+			"to":     tx.To,
+			"amount": tx.Amount,
+			"fee":    tx.Fee,
+			"nonce":  tx.Nonce,
+		}
+	}
+
 	return map[string]interface{}{
 		"height":     block.Height,
 		"hash":       hex.EncodeToString(blockHash[:]),
@@ -1013,6 +1051,6 @@ func (ns *NodeState) GetBlockByHeight(height uint64) (interface{}, error) {
 		"challenge":  hex.EncodeToString(block.Challenge[:]),
 		"farmerAddr": block.FarmerAddr,
 		"txCount":    len(block.Txs),
-		"txs":        block.Txs,
+		"txs":        formattedTxs,
 	}, nil
 }

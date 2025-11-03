@@ -728,8 +728,8 @@ func (s *FarmingServer) handleBlocksRecent(w http.ResponseWriter, r *http.Reques
 			"height":     fmt.Sprintf("%v", block["height"]),
 			"hash":       block["hash"],
 			"timestamp":  fmt.Sprintf("%v", block["timestamp"]),
-			"farmer":     block["farmerAddr"],      // v1.2.0: Renamed from "miner"
-			"miner":      block["farmerAddr"],      // Deprecated alias (remove in v1.3)
+			"farmer":     block["farmerAddr"], // v1.2.0: Renamed from "miner"
+			"miner":      block["farmerAddr"], // Deprecated alias (remove in v1.3)
 			"txCount":    fmt.Sprintf("%v", block["txCount"]),
 			"difficulty": fmt.Sprintf("%v", block["difficulty"]),
 		}
@@ -781,7 +781,8 @@ func (s *FarmingServer) handleTxRecent(w http.ResponseWriter, r *http.Request) {
 	// Extract transactions from blocks
 	txs := []map[string]interface{}{}
 	for _, block := range blocks {
-		blockTxs, ok := block["txs"].([]ledger.Transaction)
+		// Transactions come as formatted maps from GetRecentBlocks
+		blockTxsRaw, ok := block["txs"]
 		if !ok {
 			continue
 		}
@@ -789,26 +790,68 @@ func (s *FarmingServer) handleTxRecent(w http.ResponseWriter, r *http.Request) {
 		blockHeight := fmt.Sprintf("%v", block["height"])
 		blockTimestamp := fmt.Sprintf("%v", block["timestamp"])
 
-		for _, tx := range blockTxs {
-			// Compute transaction hash (simple version for now)
-			txHash := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s%s%d%d", tx.From, tx.To, tx.Amount, tx.Nonce))))[:16]
+		// Try to parse as []map[string]interface{} (formatted)
+		if formattedTxs, ok := blockTxsRaw.([]map[string]interface{}); ok {
+			for _, tx := range formattedTxs {
+				// Skip coinbase transactions
+				if txType, ok := tx["type"].(string); ok && txType == "coinbase" {
+					continue
+				}
 
-			txMap := map[string]interface{}{
-				"hash":      txHash,
-				"from":      tx.From,
-				"to":        tx.To,
-				"amount":    fmt.Sprintf("%d", tx.Amount),
-				"fee":       fmt.Sprintf("%d", tx.Fee),
-				"nonce":     fmt.Sprintf("%d", tx.Nonce),
-				"height":    blockHeight,
-				"timestamp": blockTimestamp,
+				// Compute transaction hash
+				from := fmt.Sprintf("%v", tx["from"])
+				to := fmt.Sprintf("%v", tx["to"])
+				amount := fmt.Sprintf("%v", tx["amount"])
+				nonce := fmt.Sprintf("%v", tx["nonce"])
+				txHash := fmt.Sprintf("%x", sha256.Sum256([]byte(from+to+amount+nonce)))[:16]
+
+				txMap := map[string]interface{}{
+					"hash":      txHash,
+					"type":      "transfer",
+					"from":      from,
+					"to":        to,
+					"amount":    fmt.Sprintf("%v", tx["amount"]),
+					"fee":       fmt.Sprintf("%v", tx["fee"]),
+					"nonce":     fmt.Sprintf("%v", tx["nonce"]),
+					"height":    blockHeight,
+					"timestamp": blockTimestamp,
+				}
+
+				txs = append(txs, txMap)
+
+				// Stop if we have enough
+				if len(txs) >= limit {
+					break
+				}
 			}
+		} else if ledgerTxs, ok := blockTxsRaw.([]ledger.Transaction); ok {
+			// Fallback: parse as []ledger.Transaction
+			for _, tx := range ledgerTxs {
+				// Skip coinbase
+				if tx.From == "coinbase" {
+					continue
+				}
 
-			txs = append(txs, txMap)
+				txHash := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s%s%d%d", tx.From, tx.To, tx.Amount, tx.Nonce))))[:16]
 
-			// Stop if we have enough
-			if len(txs) >= limit {
-				break
+				txMap := map[string]interface{}{
+					"hash":      txHash,
+					"type":      "transfer",
+					"from":      tx.From,
+					"to":        tx.To,
+					"amount":    fmt.Sprintf("%d", tx.Amount),
+					"fee":       fmt.Sprintf("%d", tx.Fee),
+					"nonce":     fmt.Sprintf("%d", tx.Nonce),
+					"height":    blockHeight,
+					"timestamp": blockTimestamp,
+				}
+
+				txs = append(txs, txMap)
+
+				// Stop if we have enough
+				if len(txs) >= limit {
+					break
+				}
 			}
 		}
 
