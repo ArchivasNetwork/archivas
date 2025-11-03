@@ -149,8 +149,8 @@ func (s *FarmingServer) Start(addr string) error {
 
 	// v1.2.0: Explorer listing endpoints
 	http.HandleFunc("/blocks/recent", s.wrapMetrics("/blocks/recent", s.handleBlocksRecent))
-	http.HandleFunc("/block/", s.wrapMetrics("/block", s.handleBlockByHeight))
 	http.HandleFunc("/tx/recent", s.wrapMetrics("/tx/recent", s.handleTxRecent))
+	// Note: /block/<height> already registered above
 
 	// Metrics endpoint
 	http.Handle("/metrics", promhttp.Handler())
