@@ -162,14 +162,18 @@ func (s *FarmingServer) Start(addr string) error {
 }
 
 // corsMiddleware adds CORS headers for external developers
+// v1.2.0: Single CORS header to avoid duplication with Nginx
 func (s *FarmingServer) corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Set CORS headers once (Nginx no longer adds them)
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Max-Age", "86400")
 
+		// Handle preflight
 		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 
@@ -724,7 +728,8 @@ func (s *FarmingServer) handleBlocksRecent(w http.ResponseWriter, r *http.Reques
 			"height":     fmt.Sprintf("%v", block["height"]),
 			"hash":       block["hash"],
 			"timestamp":  fmt.Sprintf("%v", block["timestamp"]),
-			"miner":      block["farmerAddr"],
+			"miner":      block["farmerAddr"],      // Primary field
+			"farmerAddr": block["farmerAddr"],      // Backward compatibility
 			"txCount":    fmt.Sprintf("%v", block["txCount"]),
 			"difficulty": fmt.Sprintf("%v", block["difficulty"]),
 		}
