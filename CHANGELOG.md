@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.2.0] - 2025-11-03
+
+### Added
+- **Explorer listing endpoints** (read-only, non-consensus)
+  - `GET /blocks/recent?limit=N` - List recent blocks (default 20, max 100)
+  - `GET /block/<height>` - Get block details by height
+  - `GET /tx/recent?limit=N` - List recent transactions (default 50, max 200)
+- **API improvements**
+  - All numeric fields returned as strings for consistency
+  - Proper error handling for invalid heights/limits
+  - CORS-enabled for public access
+
+### Notes
+- **No protocol changes:** No modifications to consensus, storage, or validation
+- **Backward compatible:** All existing endpoints unchanged
+- This is an API-additive release for explorer support
+
+---
+
 ## [v1.1.1-infra] - 2025-11-02
 
 ### Added

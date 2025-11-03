@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -145,6 +146,11 @@ func (s *FarmingServer) Start(addr string) error {
 	http.HandleFunc("/tx/", s.wrapMetrics("/tx", s.handleTxByHash))
 	http.HandleFunc("/estimateFee", s.wrapMetrics("/estimateFee", s.handleEstimateFee))
 	http.HandleFunc("/submit", s.wrapMetrics("/submit", s.handleSubmitV1))
+
+	// v1.2.0: Explorer listing endpoints
+	http.HandleFunc("/blocks/recent", s.wrapMetrics("/blocks/recent", s.handleBlocksRecent))
+	http.HandleFunc("/block/", s.wrapMetrics("/block", s.handleBlockByHeight))
+	http.HandleFunc("/tx/recent", s.wrapMetrics("/tx/recent", s.handleTxRecent))
 
 	// Metrics endpoint
 	http.Handle("/metrics", promhttp.Handler())
@@ -680,6 +686,138 @@ func (s *FarmingServer) handleMempoolView(w http.ResponseWriter, r *http.Request
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(txHashes)
+}
+
+// handleBlocksRecent handles GET /blocks/recent?limit=N
+// v1.2.0: Explorer listing endpoint
+func (s *FarmingServer) handleBlocksRecent(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse limit parameter (default: 20, max: 100)
+	limitStr := r.URL.Query().Get("limit")
+	limit := 20
+	if limitStr != "" {
+		fmt.Sscanf(limitStr, "%d", &limit)
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	if limit < 1 {
+		limit = 1
+	}
+
+	// Get recent blocks from node state
+	blocksRaw := s.nodeState.GetRecentBlocks(limit)
+	blocks, ok := blocksRaw.([]map[string]interface{})
+	if !ok {
+		http.Error(w, "Internal error retrieving blocks", http.StatusInternalServerError)
+		return
+	}
+
+	// Convert all numeric fields to strings for API consistency
+	formattedBlocks := make([]map[string]interface{}, len(blocks))
+	for i, block := range blocks {
+		formattedBlocks[i] = map[string]interface{}{
+			"height":     fmt.Sprintf("%v", block["height"]),
+			"hash":       block["hash"],
+			"timestamp":  fmt.Sprintf("%v", block["timestamp"]),
+			"miner":      block["farmerAddr"],
+			"txCount":    fmt.Sprintf("%v", block["txCount"]),
+			"difficulty": fmt.Sprintf("%v", block["difficulty"]),
+		}
+	}
+
+	response := map[string]interface{}{
+		"blocks": formattedBlocks,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleTxRecent handles GET /tx/recent?limit=N
+// v1.2.0: Explorer listing endpoint for recent transactions
+func (s *FarmingServer) handleTxRecent(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse limit parameter (default: 50, max: 200)
+	limitStr := r.URL.Query().Get("limit")
+	limit := 50
+	if limitStr != "" {
+		fmt.Sscanf(limitStr, "%d", &limit)
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	if limit < 1 {
+		limit = 1
+	}
+
+	// Get recent blocks and extract transactions
+	// Scan last N blocks for transactions
+	blocksToScan := limit * 2 // Scan 2x blocks to get enough txs
+	if blocksToScan > 100 {
+		blocksToScan = 100
+	}
+
+	blocksRaw := s.nodeState.GetRecentBlocks(blocksToScan)
+	blocks, ok := blocksRaw.([]map[string]interface{})
+	if !ok {
+		http.Error(w, "Internal error retrieving blocks", http.StatusInternalServerError)
+		return
+	}
+
+	// Extract transactions from blocks
+	txs := []map[string]interface{}{}
+	for _, block := range blocks {
+		blockTxs, ok := block["txs"].([]ledger.Transaction)
+		if !ok {
+			continue
+		}
+
+		blockHeight := fmt.Sprintf("%v", block["height"])
+		blockTimestamp := fmt.Sprintf("%v", block["timestamp"])
+
+		for _, tx := range blockTxs {
+			// Compute transaction hash (simple version for now)
+			txHash := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s%s%d%d", tx.From, tx.To, tx.Amount, tx.Nonce))))[:16]
+
+			txMap := map[string]interface{}{
+				"hash":      txHash,
+				"from":      tx.From,
+				"to":        tx.To,
+				"amount":    fmt.Sprintf("%d", tx.Amount),
+				"fee":       fmt.Sprintf("%d", tx.Fee),
+				"nonce":     fmt.Sprintf("%d", tx.Nonce),
+				"height":    blockHeight,
+				"timestamp": blockTimestamp,
+			}
+
+			txs = append(txs, txMap)
+
+			// Stop if we have enough
+			if len(txs) >= limit {
+				break
+			}
+		}
+
+		if len(txs) >= limit {
+			break
+		}
+	}
+
+	response := map[string]interface{}{
+		"txs": txs,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 
 // handleBroadcast handles POST /broadcast

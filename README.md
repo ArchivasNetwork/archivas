@@ -12,12 +12,25 @@ Archivas provides a public RPC endpoint for developers to interact with the test
 
 ### Available Routes
 
+**Account & Balance:**
 - `GET /account/<address>` - Get account balance and nonce
+
+**Chain Info:**
 - `GET /chainTip` - Get current blockchain height, hash, and difficulty
-- `GET /mempool` - List pending transactions
+- `GET /genesisHash` - Get genesis block hash
+
+**Blocks (v1.2.0):**
+- `GET /blocks/recent?limit=N` - List recent blocks (default 20, max 100)
+- `GET /block/<height>` - Get block details by height
+
+**Transactions:**
 - `GET /tx/<hash>` - Get transaction details
-- `GET /estimateFee?bytes=<n>` - Estimate transaction fee
+- `GET /tx/recent?limit=N` - List recent transactions (default 50, max 200)
+- `GET /mempool` - List pending transactions
 - `POST /submit` - Submit a signed transaction (JSON, CORS-enabled)
+
+**Utilities:**
+- `GET /estimateFee?bytes=<n>` - Estimate transaction fee
 
 ### Examples
 
@@ -34,9 +47,23 @@ curl https://seed.archivas.ai/account/arcv1zramsn568zt3cwc8ny995u3dhpz5rpuamx2jz
 curl -i https://seed.archivas.ai/submit
 # HTTP/2 405
 # allow: POST
+
+# List recent blocks (v1.2.0)
+curl https://seed.archivas.ai/blocks/recent?limit=10
+# {"blocks": [{"height":"42808","hash":"...","miner":"arcv1...","txCount":"1",...}]}
+
+# Get specific block
+curl https://seed.archivas.ai/block/42808
+# {"height":"42808","hash":"...","prevHash":"...","difficulty":"1000000",...}
+
+# List recent transactions (v1.2.0)
+curl https://seed.archivas.ai/tx/recent?limit=20
+# {"txs": [{"hash":"...","from":"arcv1...","to":"arcv1...","amount":"30000000000",...}]}
 ```
 
-**Note:** The `/submit` endpoint only accepts POST requests with `Content-Type: application/json`.
+**Note:** 
+- The `/submit` endpoint only accepts POST requests with `Content-Type: application/json`.
+- The `/blocks/recent` and `/tx/recent` endpoints show recent activity only (not full historical archive).
 
 For setup and deployment details, see [docs/SEED_HOST.md](docs/SEED_HOST.md).
 
