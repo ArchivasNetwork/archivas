@@ -449,6 +449,79 @@ This allows other nodes to discover and connect via DNS.
 
 ---
 
+---
+
+## Metrics After Hardening
+
+After v1.1.1-infra, `/metrics` is **intentionally blocked** from public access for security.
+
+### Public Access (Blocked)
+
+```bash
+curl https://seed.archivas.ai/metrics
+# HTTP/2 404 (expected - this is correct)
+```
+
+### Localhost Scraping (Correct Method)
+
+Prometheus must scrape `127.0.0.1` instead of public IPs:
+
+**File:** `/etc/prometheus/prometheus.yml`
+
+```yaml
+scrape_configs:
+  - job_name: 'archivas-nodes'
+    static_configs:
+      - targets: ['127.0.0.1:8080']  # ✅ Correct
+        # NOT: ['57.129.148.132:8080']  # ❌ Wrong (blocked)
+```
+
+Restart Prometheus:
+```bash
+sudo systemctl restart prometheus
+```
+
+Verify:
+```bash
+# Check targets:
+curl http://localhost:9090/targets
+
+# Test scrape:
+curl http://127.0.0.1:8080/metrics | head -20
+```
+
+### Multi-Server Monitoring
+
+For Server C (or other nodes), use Prometheus **remote_write**:
+
+**On Server C:**
+```yaml
+# /etc/prometheus/prometheus.yml
+scrape_configs:
+  - job_name: 'archivas-nodes'
+    static_configs:
+      - targets: ['127.0.0.1:8080']
+
+remote_write:
+  - url: http://57.129.148.132:9090/api/v1/write
+```
+
+See [docs/METRICS_LOCALHOST.md](METRICS_LOCALHOST.md) for complete guide.
+
+### Troubleshooting
+
+**"Connection refused" errors:**
+1. Check service is running: `ps aux | grep archivas`
+2. Check binding: `sudo lsof -i :8080`
+3. Update Prometheus targets to use `127.0.0.1`
+
+**Grafana shows "No data":**
+1. Check Prometheus targets: `http://localhost:9090/targets`
+2. Increase time range to "Last 1 hour"
+3. Test query: `curl 'http://localhost:9090/api/v1/query?query=archivas_tip_height'`
+
+---
+
 ## Contact
 
 For issues with seed.archivas.ai:

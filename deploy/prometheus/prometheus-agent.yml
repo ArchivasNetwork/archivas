@@ -1,0 +1,43 @@
+# Prometheus Agent Configuration for Remote Servers
+# Use this on Server C (or other nodes) to forward metrics to Server A
+# This avoids exposing /metrics publicly while still collecting metrics
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  external_labels:
+    instance: 'server-c'  # Change per server
+    role: 'farmer'         # Change per role
+    server: '57.129.148.134'  # Change per server
+
+scrape_configs:
+  # Local Archivas Node
+  - job_name: 'archivas-nodes'
+    static_configs:
+      - targets: ['127.0.0.1:8080']
+
+  # Local Archivas Farmer (if separate metrics port)
+  # - job_name: 'archivas-farmers'
+  #   static_configs:
+  #     - targets: ['127.0.0.1:9102']
+
+  # Node Exporter (system metrics - optional)
+  # - job_name: 'node-exporter'
+  #   static_configs:
+  #     - targets: ['localhost:9100']
+
+# Forward all metrics to Server A's Prometheus
+remote_write:
+  - url: http://57.129.148.132:9090/api/v1/write
+    queue_config:
+      capacity: 10000
+      max_samples_per_send: 5000
+      max_shards: 200
+      min_shards: 1
+      max_backoff: 100ms
+      min_backoff: 30ms
+      batch_send_deadline: 5s
+    metadata_config:
+      send: true
+      send_interval: 1m
+

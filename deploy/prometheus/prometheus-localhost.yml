@@ -1,0 +1,57 @@
+# Prometheus Configuration for Archivas (Localhost Scraping)
+# Post v1.1.1-infra hardening - /metrics blocked from public
+# Use this config on Server A to scrape local exporters
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'archivas-devnet-v3'
+    environment: 'production'
+
+# Alertmanager configuration (optional)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ['localhost:9093']
+
+# Load rules once and periodically evaluate them
+# rule_files:
+#   - "alerts/*.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Archivas Node (Server A)
+  # Metrics are exposed on the same port as RPC (8080)
+  - job_name: 'archivas-nodes'
+    static_configs:
+      - targets: ['127.0.0.1:8080']
+        labels:
+          instance: 'server-a'
+          role: 'seed-node'
+          server: '57.129.148.132'
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Node Exporter (system metrics - optional)
+  # - job_name: 'node-exporter'
+  #   static_configs:
+  #     - targets: ['localhost:9100']
+
+# Remote write receiver configuration (for multi-server setup)
+# Allows other Prometheus instances to forward metrics here
+# Requires Prometheus 2.40+
+# remote_write_receiver:
+#   enabled: true
+
+# Storage configuration
+storage:
+  tsdb:
+    path: /var/lib/prometheus/data
+    retention.time: 30d
+    out_of_order_time_window: 30m
+
