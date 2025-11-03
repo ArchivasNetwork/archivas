@@ -50,7 +50,7 @@ curl -i https://seed.archivas.ai/submit
 
 # List recent blocks (v1.2.0)
 curl https://seed.archivas.ai/blocks/recent?limit=10
-# {"blocks": [{"height":"42808","hash":"...","miner":"arcv1...","txCount":"1",...}]}
+# {"blocks": [{"height":"42808","hash":"...","farmer":"arcv1...","txCount":"1",...}]}
 
 # Get specific block
 curl https://seed.archivas.ai/block/42808

@@ -728,8 +728,8 @@ func (s *FarmingServer) handleBlocksRecent(w http.ResponseWriter, r *http.Reques
 			"height":     fmt.Sprintf("%v", block["height"]),
 			"hash":       block["hash"],
 			"timestamp":  fmt.Sprintf("%v", block["timestamp"]),
-			"miner":      block["farmerAddr"],      // Primary field
-			"farmerAddr": block["farmerAddr"],      // Backward compatibility
+			"farmer":     block["farmerAddr"],      // v1.2.0: Renamed from "miner"
+			"miner":      block["farmerAddr"],      // Deprecated alias (remove in v1.3)
 			"txCount":    fmt.Sprintf("%v", block["txCount"]),
 			"difficulty": fmt.Sprintf("%v", block["difficulty"]),
 		}

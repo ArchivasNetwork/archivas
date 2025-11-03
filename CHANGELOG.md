@@ -19,6 +19,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Proper error handling for invalid heights/limits
   - CORS-enabled for public access
 
+### Changed
+- **Terminology:** Renamed `miner` → `farmer` in block JSON responses
+  - Reflects Proof-of-Space-and-Time terminology
+  - `miner` kept as deprecated alias until v1.3 (backward compatibility)
+  - Primary field is now `farmer`
+
+### Fixed
+- **CORS duplication:** Fixed "Access-Control-Allow-Origin: *, *" browser error
+  - Nginx no longer adds CORS headers
+  - Backend (RPC middleware) solely responsible for CORS
+  - Single, clean CORS header set
+
 ### Notes
 - **No protocol changes:** No modifications to consensus, storage, or validation
 - **Backward compatible:** All existing endpoints unchanged
