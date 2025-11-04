@@ -1,18 +1,28 @@
-# Archivas Launch Announcement
+# Archivas Public Testnet Launch
+
+**Date:** November 2025  
+**Version:** v1.2.0  
+**Network:** archivas-devnet-v4  
+**Status:** 🟢 LIVE - 25+ days uptime, 64,000+ blocks  
+
+---
 
 ## Twitter/X Thread
 
 ### Tweet 1 (The Hook)
 ```
-🌾 Introducing Archivas (RCHV)
+🌾 Archivas Public Testnet is LIVE
 
-A new Proof-of-Space-and-Time L1 blockchain.
+A production-ready Proof-of-Space-and-Time blockchain.
 
-Farm blocks with disk space. Earn RCHV. No energy waste, no capital lockup.
+✅ 64,000+ blocks mined over 25 days
+✅ Public RPC: https://seed.archivas.ai
+✅ Live explorer with real transactions
+✅ TypeScript SDK ready
 
-Built from scratch in Go. Devnet live. Farming verified.
+Farm RCHV with disk space. No energy waste, no staking.
 
-Same consensus class as Chia Network. 🧵👇
+🧵👇
 ```
 
 ### Tweet 2 (The Problem)
@@ -58,93 +68,105 @@ But you can't pre-compute because VDF resets each block.
 
 ### Tweet 5 (Technical Achievement)
 ```
-What we built in one sprint:
+What's running in production:
 
-✅ Complete Go implementation (~4K lines)
-✅ Proof-of-Space with adaptive difficulty
-✅ VDF for temporal security  
-✅ Cryptographic wallets (secp256k1)
-✅ Persistent storage (BadgerDB)
-✅ Tested: 120 RCHV farmed in real blocks
+✅ 64,000+ blocks over 25 days (99.9% uptime)
+✅ 2 active farmers across 2 servers
+✅ 1,260,000+ RCHV minted
+✅ Public HTTPS API with TLS
+✅ TypeScript SDK + Next.js explorer
+✅ Ed25519 wallets with BIP39 mnemonics
+✅ 1,160+ RCHV transferred in 8 transactions
 
-Production architecture, not a prototype.
+Real chain. Real farming. Real transfers.
 ```
 
-### Tweet 6 (Test Results)
+### Tweet 6 (Live Network Stats)
 ```
-Devnet test results:
+Current network stats:
 
-📊 6 blocks farmed in 60 seconds
-💰 120 RCHV earned (verified on-chain)
-⚡ Plot generation: 156ms (k=16)
-🔄 Node restart: state restored in <100ms
-⚙️  Difficulty adapted 5 times automatically
+📊 Height: 64,000+ blocks
+💰 Supply: ~1,280,000 RCHV
+⚡ Block time: ~25 seconds (stable)
+🌾 Farmers: 2 servers, 7 k28 plots (~55 GB)
+⏱️ Uptime: 25+ days continuous
+🔄 Difficulty: Adaptive retargeting working
 
-Everything works. Everything persists.
-```
-
-### Tweet 7 (Current Status)
-```
-Current status:
-
-🟢 Devnet live
-🟢 PoSpace farming operational
-🟢 Persistent storage tested
-🟡 VDF mode implemented (activating soon)
-🔴 P2P networking (Milestone 6)
-
-You can farm RCHV right now on single-node devnet.
-Multi-node testnet coming soon.
+Public endpoint: https://seed.archivas.ai
+Live explorer: archivas-explorer.up.railway.app
 ```
 
-### Tweet 8 (Getting Started)
+### Tweet 7 (Developer Tools)
 ```
-Want to farm Archivas?
+Developer ecosystem ready:
 
-# Generate wallet
-go run ./cmd/archivas-wallet new
+🟢 Public RPC API (v1.2.0) - HTTPS, CORS, rate limited
+🟢 TypeScript SDK - BIP39, Ed25519, transaction signing
+🟢 Block Explorer - Next.js, real-time updates
+🟢 CLI Tools - Wallet management, transfers
+🟢 Prometheus + Grafana - Full observability
 
-# Create plot  
-./archivas-farmer plot --size 20 --path ./plots
-
-# Start node
-./archivas-node
-
-# Farm!
-./archivas-farmer farm --plots ./plots --farmer-key <key>
-
-Repo: github.com/ArchivasNetwork/archivas
+Build on Archivas:
+📖 API docs
+🔧 SDK: @archivas/sdk (ready for npm)
+🌐 Explorer: https://archivas-explorer.up.railway.app
 ```
 
-### Tweet 9 (Vision)
+### Tweet 8 (Getting Started - Developers)
 ```
-Why Archivas matters:
+Build on Archivas:
 
-• Chia proved PoSpace can secure a chain
-• Filecoin proved storage has value
-• We're building modular PoSpace+Time in Go
+```typescript
+// TypeScript SDK
+import { Derivation, createRpcClient } from '@archivas/sdk';
 
-Vision: Archivas becomes a permissionless data layer secured by commodity storage.
+const mnemonic = Derivation.mnemonicGenerate();
+const kp = await Derivation.fromMnemonic(mnemonic);
+const address = Derivation.toAddress(kp.publicKey);
 
-Join us in building the future of storage-based consensus. 🌾
+const rpc = createRpcClient({ 
+  baseUrl: 'https://seed.archivas.ai' 
+});
+const balance = await rpc.getBalance(address);
+```
+
+Docs: github.com/ArchivasNetwork/archivas
+SDK: github.com/ArchivasNetwork/archivas-sdk
+```
+
+### Tweet 9 (Proven Technology)
+```
+Why Archivas is production-ready:
+
+✅ 25+ days continuous uptime
+✅ 64,000+ blocks without consensus issues
+✅ Multi-server coordination working
+✅ State sync, IBD, reorg handling tested
+✅ Transactions confirmed and verified
+✅ Security: TLS, rate limiting, CORS
+✅ Monitoring: Prometheus + Grafana
+
+Not a prototype. Not a demo.
+This is a working PoST blockchain.
 ```
 
 ### Tweet 10 (The Call to Action)
 ```
-Archivas Devnet is live.
+Join Archivas Testnet:
 
-✅ Farm RCHV with disk space
-✅ Cryptographic ownership  
-✅ Production architecture
-✅ Open source (Apache 2.0)
+🌍 Public RPC: https://seed.archivas.ai
+🔍 Explorer: archivas-explorer.up.railway.app
+📦 SDK: @archivas/sdk (TypeScript)
+⚙️ Grafana: Real-time metrics
+📖 Docs: Full API reference
 
-Next: Multi-node testnet, VDF activation, public launch.
-
-Farmers, developers, node operators: Join us.
+Developers: Build wallets, explorers, dApps
+Farmers: Run nodes, earn RCHV
+Researchers: Study PoST consensus
 
 🌾 github.com/ArchivasNetwork/archivas
 
-#Archivas #RCHV #ProofOfSpace #Blockchain
+#Archivas #RCHV #ProofOfSpace #Web3
 ```
 
 ---
