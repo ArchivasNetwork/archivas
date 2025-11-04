@@ -24,12 +24,19 @@ func (n *Network) handleRequestBlocks(peer *Peer, payload json.RawMessage) {
 	if n.ibdInflight >= n.ibdMaxConcurrent {
 		n.Unlock()
 		log.Printf("[p2p] IBD backpressure: rejecting request from %s (inflight=%d)", peer.Address, n.ibdInflight)
-		// Send empty batch with EOF=false to signal busy
+		
+		// Get real tip height even when busy
+		var realTip uint64
+		if n.nodeHandler != nil {
+			realTip, _, _ = n.nodeHandler.GetStatus()
+		}
+		
+		// Send empty batch with real tip (not 0) to avoid underflow
 		emptyBatch := BlocksBatchMessage{
 			FromHeight: req.FromHeight,
 			Count:      0,
 			Blocks:     []json.RawMessage{},
-			TipHeight:  0,
+			TipHeight:  realTip,  // Real tip, not 0!
 			EOF:        false,
 		}
 		n.SendMessage(peer, MsgTypeBlocksBatch, emptyBatch)
@@ -84,8 +91,8 @@ func (n *Network) handleRequestBlocks(peer *Peer, payload json.RawMessage) {
 		EOF:        eof,
 	}
 
-	log.Printf("[p2p] serving batch to %s: from=%d count=%d tip=%d eof=%v", 
-		peer.Address, fromHeight, len(blocks), tipHeight, eof)
+	log.Printf("[blocks-range] served %d blocks from %d (tip=%d, eof=%v) to %s", 
+		len(blocks), fromHeight, tipHeight, eof, peer.Address)
 
 	n.SendMessage(peer, MsgTypeBlocksBatch, batch)
 }
@@ -151,11 +158,20 @@ func (n *Network) handleBlocksBatch(peer *Peer, payload json.RawMessage) {
 		return
 	}
 
-	// If empty batch but still far behind, retry with delay
-	if batch.Count == 0 && gap > 50 {
-		log.Printf("[sync] empty batch received but still %d blocks behind (height %d, tip %d), retrying in 5s...", 
-			gap, localHeight, batch.TipHeight)
-		time.Sleep(5 * time.Second)
+	// If empty batch but still far behind, handle carefully
+	if batch.Count == 0 {
+		// Check for invalid tip (0 or less than local)
+		if batch.TipHeight == 0 || batch.TipHeight < localHeight {
+			log.Printf("[IBD] peer %s returned invalid tip=%d (local=%d), skipping peer", 
+				peer.Address, batch.TipHeight, localHeight)
+			return
+		}
+		
+		if gap > 50 {
+			log.Printf("[sync] empty batch received but still %d blocks behind (height %d, tip %d), retrying in 5s...", 
+				gap, localHeight, batch.TipHeight)
+			time.Sleep(5 * time.Second)
+		}
 	}
 
 	// If we're still behind, request next batch
