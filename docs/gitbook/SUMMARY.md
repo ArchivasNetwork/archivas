@@ -1,65 +1,48 @@
 # Archivas Documentation
 
-## Table of Contents
+## Introduction
 
-* [Introduction](Introduction.md)
-  * What is Archivas?
-  * Why Archivas?
-  * How It Works
-  * Current Status
+* [Welcome to Archivas](README.md)
+* [What is Proof-of-Space-and-Time?](proof-of-space-time.md)
+* [Why Archivas?](why-archivas.md)
+* [Current Status](current-status.md)
 
-* [Getting Started](Getting-Started.md)
-  * Prerequisites
-  * Installation
-  * Join the Testnet
-  * Troubleshooting
+## Getting Started
 
-* [Architecture](Architecture.md)
-  * System Overview
-  * Components (Node, Timelord, Farmer, Wallet)
-  * Data Flow
-  * Package Structure
-  * Database Schema
+* [Quick Start](quick-start.md)
+* [Using the Public Testnet](public-testnet.md)
+* [Developer Quickstart](developer-quickstart.md)
 
-* [Consensus Mechanism](Consensus.md)
-  * Proof-of-Space
-  * Verifiable Delay Functions
-  * Adaptive Difficulty
-  * Block Validation
-  * Security Analysis
+## For Developers
 
-* [Testnet Guide](Testnet-Guide.md)
-  * Network Information
-  * Joining the Testnet
-  * Monitoring
-  * Farming Guide
-  * Best Practices
+* [Public RPC API](api-reference.md)
+* [TypeScript SDK](sdk-guide.md)
+* [Building a Wallet](building-wallet.md)
+* [Transaction Signing](transaction-signing.md)
 
-* [Developer Documentation](Developer-Docs.md)
-  * Building from Source
-  * API Reference
-  * Package APIs
-  * Contributing
-  * Building Features
+## For Farmers
 
-* [Roadmap](Roadmap.md)
-  * Vision
-  * Phase 1: Testnet Alpha (Current)
-  * Phase 2: Testnet Beta
-  * Phase 3: Mainnet Prep
-  * Phase 4: Mainnet Launch
-  * Long-term Vision
+* [What is Farming?](what-is-farming.md)
+* [Setting Up a Farmer](setup-farmer.md)
+* [Creating Plots](creating-plots.md)
+* [Running a Node](running-node.md)
 
----
+## Architecture
 
-## Additional Resources
+* [System Overview](architecture-overview.md)
+* [Consensus Mechanism](consensus.md)
+* [Block Structure](block-structure.md)
+* [Transaction Format](transaction-format.md)
+* [Network Protocol](network-protocol.md)
 
-* [GitHub Repository](https://github.com/ArchivasNetwork/archivas)
-* [Release Notes](https://github.com/ArchivasNetwork/archivas/releases)
-* [Issues & Bug Reports](https://github.com/ArchivasNetwork/archivas/issues)
-* [Community Discussions](https://github.com/ArchivasNetwork/archivas/discussions)
+## Operations
 
----
+* [Seed Node Setup](../SEED_HOST.md)
+* [Metrics and Monitoring](../OBSERVABILITY.md)
+* [Deployment Guide](deployment.md)
 
-**Archivas** - Where disk space mines the future 🌾
+## Reference
 
+* [Changelog](../../CHANGELOG.md)
+* [API Specification](../../specs/api-wallet-v1.md)
+* [Wallet Primitives](../wallet-primitives.md)
