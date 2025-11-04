@@ -1,4 +1,4 @@
-# Table of Contents
+# Table of contents
 
 ## Introduction
 
@@ -80,8 +80,8 @@
 
 ## Reference
 
-* [Changelog](../CHANGELOG.md)
-* [API Specification v1.1.0](../specs/api-wallet-v1.md)
+* [Changelog](reference/changelog.md)
+* [API Specification v1.1.0](reference/api-specification-v1.1.0.md)
 * [Current Status](../CURRENT-STATUS.md)
 * [FAQ](reference/faq.md)
 * [Glossary](reference/glossary.md)
