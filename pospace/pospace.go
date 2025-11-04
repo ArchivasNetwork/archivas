@@ -258,21 +258,29 @@ func computeQuality(challenge [32]byte, hash [32]byte) uint64 {
 func VerifyProof(proof *Proof, challenge [32]byte, difficultyTarget uint64) bool {
 	// Verify challenge matches
 	if proof.Challenge != challenge {
+		log.Printf("[PoSpace] REJECT: challenge mismatch (proof=%x, expected=%x)", proof.Challenge[:8], challenge[:8])
 		return false
 	}
 
 	// Recompute the hash from farmer pubkey and index
 	expectedHash := computePlotHash(proof.FarmerPubKey[:], proof.PlotID[:], proof.Index)
 	if expectedHash != proof.Hash {
+		log.Printf("[PoSpace] REJECT: hash mismatch (proof=%x, expected=%x)", proof.Hash[:8], expectedHash[:8])
 		return false
 	}
 
 	// Recompute quality
 	quality := computeQuality(challenge, proof.Hash)
 	if quality != proof.Quality {
+		log.Printf("[PoSpace] REJECT: quality mismatch (proof=%d, computed=%d)", proof.Quality, quality)
 		return false
 	}
 
 	// Check difficulty (v1.1.1: quality <= difficulty to win, lower is better)
-	return quality <= difficultyTarget
+	if quality > difficultyTarget {
+		log.Printf("[PoSpace] REJECT: quality too high (quality=%d, target=%d)", quality, difficultyTarget)
+		return false
+	}
+	
+	return true
 }
