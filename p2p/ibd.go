@@ -144,10 +144,18 @@ func (n *Network) handleBlocksBatch(peer *Peer, payload json.RawMessage) {
 		metrics.IncIBDBlocksApplied(applied)
 	}
 
-	// If this was the last batch, we're caught up
-	if batch.EOF && batch.Count == 0 {
-		log.Printf("[sync] caught up to tip at height %d", localHeight)
+	// Check if we're within 50 blocks of tip (actually caught up)
+	gap := batch.TipHeight - localHeight
+	if gap <= 50 {
+		log.Printf("[sync] caught up to tip at height %d (gap: %d blocks)", localHeight, gap)
 		return
+	}
+
+	// If empty batch but still far behind, retry with delay
+	if batch.Count == 0 && gap > 50 {
+		log.Printf("[sync] empty batch received but still %d blocks behind (height %d, tip %d), retrying in 5s...", 
+			gap, localHeight, batch.TipHeight)
+		time.Sleep(5 * time.Second)
 	}
 
 	// If we're still behind, request next batch
@@ -158,7 +166,12 @@ func (n *Network) handleBlocksBatch(peer *Peer, payload json.RawMessage) {
 		}
 		metrics.IncIBDRequestedBatches()
 		n.SendMessage(peer, MsgTypeRequestBlocks, nextReq)
-		log.Printf("[sync] requesting next batch from=%d", nextReq.FromHeight)
+		
+		// Log progress
+		if gap > 1000 {
+			log.Printf("[IBD] Downloading: height %d/%d (%.1f%% complete, %d blocks remaining)",
+				localHeight, batch.TipHeight, float64(localHeight)*100/float64(batch.TipHeight), gap)
+		}
 	}
 }
 
