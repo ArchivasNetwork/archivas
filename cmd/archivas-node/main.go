@@ -438,11 +438,21 @@ func main() {
 				
 				// Try each peer until IBD succeeds
 				for _, peerAddr := range allPeers {
-					peerURL := fmt.Sprintf("http://%s", strings.Replace(peerAddr, ":9090", ":8080", 1))
+					// Convert peer address to HTTP(S) endpoint
+					var peerURL string
+					if strings.Contains(peerAddr, "seed.archivas.ai") {
+						// Use public HTTPS endpoint for seed
+						peerURL = "https://seed.archivas.ai"
+					} else {
+						// Direct HTTP for other peers (assume localhost or VPN)
+						peerURL = fmt.Sprintf("http://%s", strings.Replace(peerAddr, ":9090", ":8080", 1))
+					}
+					
 					if err := runHTTPBasedIBD(nodeState, peerURL); err != nil {
 						log.Printf("[IBD] Failed with peer %s: %v", peerAddr, err)
 						continue
 					}
+					log.Printf("[IBD] Successfully synced via %s", peerURL)
 					break // Success
 				}
 			}()
