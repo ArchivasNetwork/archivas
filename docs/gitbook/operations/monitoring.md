@@ -5,4 +5,4 @@ Detailed guide coming soon.
 **For now, see:**
 - [SEED_HOST.md](../../SEED_HOST.md) - Seed node setup
 - [OBSERVABILITY.md](../../OBSERVABILITY.md) - Monitoring
-- [CURRENT-STATUS.md](../../CURRENT-STATUS.md) - Current state
+- [CURRENT-STATUS.md](../current-status.md) - Current state

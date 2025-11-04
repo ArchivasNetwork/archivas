@@ -47,7 +47,7 @@
 
 ## Operations
 
-* [Seed Node Setup](operations/seed-node.md)
+* [Seed Node Setup](../operations/seed-node.md)
 * [Metrics & Monitoring](operations/monitoring.md)
 * [Security Best Practices](operations/security.md)
 * [Deployment Guide](operations/deployment.md)
@@ -82,7 +82,7 @@
 
 * [Changelog](reference/changelog.md)
 * [API Specification v1.1.0](reference/api-specification-v1.1.0.md)
-* [Current Status](../CURRENT-STATUS.md)
+* [Current Status](current-status.md)
 * [FAQ](reference/faq.md)
 * [Glossary](reference/glossary.md)
 
