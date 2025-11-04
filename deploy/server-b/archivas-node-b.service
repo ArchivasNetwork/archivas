@@ -1,0 +1,32 @@
+[Unit]
+Description=Archivas Node (Server B)
+Documentation=https://github.com/ArchivasNetwork/archivas
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/archivas
+
+# Start node with peering to Server A
+ExecStart=/home/ubuntu/archivas/archivas-node \
+  --rpc 127.0.0.1:8080 \
+  --p2p :9090 \
+  --genesis /home/ubuntu/archivas/genesis/devnet.genesis.json \
+  --network-id archivas-devnet-v4 \
+  --bootnodes 57.129.148.132:9090
+
+# Auto-restart on failure
+Restart=always
+RestartSec=10
+LimitNOFILE=65535
+
+# Logging
+StandardOutput=append:/var/log/archivas-node-b.log
+StandardError=append:/var/log/archivas-node-b-error.log
+
+[Install]
+WantedBy=multi-user.target
+

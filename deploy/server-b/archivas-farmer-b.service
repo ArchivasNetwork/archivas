@@ -1,0 +1,30 @@
+[Unit]
+Description=Archivas Farmer (Server B)
+Documentation=https://github.com/ArchivasNetwork/archivas
+After=archivas-node-b.service
+Wants=archivas-node-b.service
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/archivas
+
+# IMPORTANT: Replace FARMER_PRIVKEY_HERE with your actual private key
+# Generate with: ./archivas-cli keygen
+ExecStart=/home/ubuntu/archivas/archivas-farmer farm \
+  --plots /home/ubuntu/archivas/plots-b \
+  --node http://127.0.0.1:8080 \
+  --farmer-privkey FARMER_PRIVKEY_HERE
+
+# Auto-restart on failure
+Restart=always
+RestartSec=10
+
+# Logging
+StandardOutput=append:/var/log/archivas-farmer-b.log
+StandardError=append:/var/log/archivas-farmer-b-error.log
+
+[Install]
+WantedBy=multi-user.target
+
