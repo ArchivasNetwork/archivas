@@ -7,7 +7,10 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -427,6 +430,23 @@ func main() {
 			fmt.Printf("📡 Connecting to %d peer(s)/bootnode(s)...\n", len(allPeers))
 		}
 		fmt.Println()
+		
+		// v1.2.1: HTTP-based IBD if far behind
+		if len(allPeers) > 0 {
+			go func() {
+				time.Sleep(2 * time.Second) // Wait for peer connections
+				
+				// Try each peer until IBD succeeds
+				for _, peerAddr := range allPeers {
+					peerURL := fmt.Sprintf("http://%s", strings.Replace(peerAddr, ":9090", ":8080", 1))
+					if err := runHTTPBasedIBD(nodeState, peerURL); err != nil {
+						log.Printf("[IBD] Failed with peer %s: %v", peerAddr, err)
+						continue
+					}
+					break // Success
+				}
+			}()
+		}
 	}
 
 	// Start RPC server in background
@@ -1013,6 +1033,218 @@ func (ns *NodeState) GetRecentBlocks(count int) interface{} {
 }
 
 // GetBlockByHeight returns a specific block by height
+// runHTTPBasedIBD attempts to sync via HTTP if node is far behind
+// v1.2.1: Proper IBD implementation
+func runHTTPBasedIBD(ns *NodeState, peerURL string) error {
+	ns.RLock()
+	localTip := ns.CurrentHeight
+	ns.RUnlock()
+	
+	// Get remote tip
+	remoteTip, err := fetchRemoteTip(peerURL)
+	if err != nil {
+		return fmt.Errorf("failed to fetch remote tip: %w", err)
+	}
+	
+	gap := remoteTip - localTip
+	
+	// Only run IBD if significantly behind
+	if gap <= 200 {
+		log.Printf("[IBD] Node is close to tip (gap: %d), using P2P sync", gap)
+		return nil
+	}
+	
+	log.Printf("[IBD] Starting HTTP-based sync: local=%d remote=%d (%.1f%% behind, %d blocks)",
+		localTip, remoteTip, float64(localTip)*100/float64(remoteTip), gap)
+	
+	const batchSize = 512
+	lastLogTime := time.Now()
+	
+	for {
+		ns.RLock()
+		currentHeight := ns.CurrentHeight
+		ns.RUnlock()
+		
+		// Check if caught up
+		if remoteTip-currentHeight <= 50 {
+			log.Printf("[IBD] Complete! Synced to height %d (gap: %d blocks)", currentHeight, remoteTip-currentHeight)
+			return nil
+		}
+		
+		// Fetch next batch
+		blocks, newRemoteTip, err := fetchBlockBatch(peerURL, currentHeight+1, batchSize)
+		if err != nil {
+			log.Printf("[IBD] Fetch error: %v, retrying in 5s...", err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		
+		// Update remote tip (chain may be growing)
+		if newRemoteTip > remoteTip {
+			remoteTip = newRemoteTip
+		}
+		
+		// Apply blocks
+		for _, blockData := range blocks {
+			if err := applyIBDBlock(ns, blockData); err != nil {
+				return fmt.Errorf("failed to apply block: %w", err)
+			}
+		}
+		
+		// Progress logging (every 5 seconds)
+		if time.Since(lastLogTime) > 5*time.Second {
+			ns.RLock()
+			currentHeight = ns.CurrentHeight
+			ns.RUnlock()
+			
+			pct := float64(currentHeight) * 100 / float64(remoteTip)
+			remaining := remoteTip - currentHeight
+			log.Printf("[IBD] Progress: %d/%d (%.1f%% complete, %d blocks remaining)",
+				currentHeight, remoteTip, pct, remaining)
+			lastLogTime = time.Now()
+		}
+		
+		// If no blocks received, we might be caught up
+		if len(blocks) == 0 {
+			break
+		}
+	}
+	
+	return nil
+}
+
+// fetchRemoteTip gets the current tip from a peer
+func fetchRemoteTip(peerURL string) (uint64, error) {
+	url := fmt.Sprintf("%s/chainTip", peerURL)
+	resp, err := http.Get(url)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	
+	var result struct {
+		Height string `json:"height"`
+	}
+	
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0, err
+	}
+	
+	return strconv.ParseUint(result.Height, 10, 64)
+}
+
+// fetchBlockBatch fetches a batch of blocks from /blocks/since
+func fetchBlockBatch(peerURL string, fromHeight uint64, limit int) ([]map[string]interface{}, uint64, error) {
+	url := fmt.Sprintf("%s/blocks/since/%d?limit=%d", peerURL, fromHeight, limit)
+	
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, 0, fmt.Errorf("HTTP %d: %s", resp.StatusCode, body)
+	}
+	
+	var result struct {
+		TipHeight string                   `json:"tipHeight"`
+		Blocks    []map[string]interface{} `json:"blocks"`
+	}
+	
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, 0, err
+	}
+	
+	tipHeight, err := strconv.ParseUint(result.TipHeight, 10, 64)
+	if err != nil {
+		return nil, 0, fmt.Errorf("invalid tipHeight: %s", result.TipHeight)
+	}
+	
+	if tipHeight == 0 {
+		return nil, 0, fmt.Errorf("peer returned tipHeight=0")
+	}
+	
+	return result.Blocks, tipHeight, nil
+}
+
+// applyIBDBlock applies a block received during IBD
+func applyIBDBlock(ns *NodeState, blockData map[string]interface{}) error {
+	// Convert to Block struct
+	blockJSON, err := json.Marshal(blockData)
+	if err != nil {
+		return err
+	}
+	
+	var block Block
+	if err := json.Unmarshal(blockJSON, &block); err != nil {
+		return err
+	}
+	
+	ns.Lock()
+	defer ns.Unlock()
+	
+	// Validate height continuity
+	expectedHeight := ns.CurrentHeight + 1
+	if block.Height != expectedHeight {
+		return fmt.Errorf("height discontinuity: expected %d, got %d", expectedHeight, block.Height)
+	}
+	
+	// Validate parent hash
+	if len(ns.Chain) > 0 {
+		prevBlock := ns.Chain[len(ns.Chain)-1]
+		prevHash := hashBlock(&prevBlock)
+		if block.PrevHash != prevHash {
+			return fmt.Errorf("parent hash mismatch at height %d", block.Height)
+		}
+	}
+	
+	// Apply transactions to state
+	for _, tx := range block.Txs {
+		if tx.From == "coinbase" {
+			// Coinbase transaction
+			receiver, ok := ns.WorldState.Accounts[tx.To]
+			if !ok {
+				receiver = &ledger.AccountState{Balance: 0, Nonce: 0}
+				ns.WorldState.Accounts[tx.To] = receiver
+			}
+			receiver.Balance += tx.Amount
+		} else {
+			// Regular transaction
+			if err := ns.WorldState.ApplyTransaction(tx); err != nil {
+				// Log but don't fail - transaction might be invalid
+				log.Printf("[IBD] Skipping tx in block %d: %v", block.Height, err)
+			}
+		}
+	}
+	
+	// Add block to chain
+	ns.Chain = append(ns.Chain, block)
+	ns.CurrentHeight = block.Height
+	
+	// Persist to disk
+	if ns.BlockStore != nil {
+		if err := ns.BlockStore.SaveBlock(block.Height, block); err != nil {
+			return fmt.Errorf("failed to save block %d: %w", block.Height, err)
+		}
+	}
+	
+	// Update tip in metadata
+	if ns.MetaStore != nil {
+		if err := ns.MetaStore.SaveTipHeight(block.Height); err != nil {
+			log.Printf("[IBD] Warning: failed to save tip height: %v", err)
+		}
+	}
+	
+	// Update metrics occasionally
+	if block.Height%100 == 0 {
+		metrics.UpdateTipHeight(block.Height)
+	}
+	
+	return nil
+}
+
 func (ns *NodeState) GetBlockByHeight(height uint64) (interface{}, error) {
 	ns.RLock()
 	defer ns.RUnlock()
