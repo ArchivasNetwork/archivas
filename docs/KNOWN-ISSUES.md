@@ -88,6 +88,10 @@ Active bugs and limitations in Archivas.
 
 ## Resolved
 
+### ✅ IBD TipHeight=0 Bug (Fixed in v1.2.0)
+
+Empty batches during backpressure returned `TipHeight: 0`, causing integer underflow. Fixed to return real tip height.
+
 ### ✅ CORS Duplication (Fixed in v1.2.0)
 
 Browser error "Access-Control-Allow-Origin: *, *" - fixed by removing Nginx CORS headers
