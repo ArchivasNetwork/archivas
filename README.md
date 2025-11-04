@@ -69,7 +69,7 @@ For setup and deployment details, see [docs/SEED_HOST.md](docs/SEED_HOST.md).
 
 ---
 
-[![Build Status](https://github.com/iljanemesis/archivas/workflows/Build%20and%20Test/badge.svg)](https://github.com/iljanemesis/archivas/actions)
+[![Build Status](https://github.com/ArchivasNetwork/archivas/workflows/Build%20and%20Test/badge.svg)](https://github.com/ArchivasNetwork/archivas/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Version](https://img.shields.io/badge/go-1.21+-blue.svg)](https://golang.org)
 
@@ -85,7 +85,7 @@ For setup and deployment details, see [docs/SEED_HOST.md](docs/SEED_HOST.md).
 
 ```bash
 # Clone repository
-git clone https://github.com/iljanemesis/archivas
+git clone https://github.com/ArchivasNetwork/archivas
 cd archivas
 
 # Download dependencies
@@ -308,9 +308,9 @@ See [MILESTONE6-P2P.md](MILESTONE6-P2P.md) for P2P integration guide.
 
 ## Community
 
-- **GitHub:** [github.com/iljanemesis/archivas](https://github.com/iljanemesis/archivas)
-- **Discussions:** [GitHub Discussions](https://github.com/iljanemesis/archivas/discussions)
-- **Issues:** [Report bugs](https://github.com/iljanemesis/archivas/issues)
+- **GitHub:** [github.com/ArchivasNetwork/archivas](https://github.com/ArchivasNetwork/archivas)
+- **Discussions:** [GitHub Discussions](https://github.com/ArchivasNetwork/archivas/discussions)
+- **Issues:** [Report bugs](https://github.com/ArchivasNetwork/archivas/issues)
 
 ---
 

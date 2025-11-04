@@ -14,10 +14,10 @@ import (
 	"time"
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
-	"github.com/iljanemesis/archivas/logging"
-	"github.com/iljanemesis/archivas/metrics"
-	"github.com/iljanemesis/archivas/pospace"
-	"github.com/iljanemesis/archivas/wallet"
+	"github.com/ArchivasNetwork/archivas/logging"
+	"github.com/ArchivasNetwork/archivas/metrics"
+	"github.com/ArchivasNetwork/archivas/pospace"
+	"github.com/ArchivasNetwork/archivas/wallet"
 )
 
 func main() {

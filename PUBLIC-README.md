@@ -4,7 +4,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/go-1.21+-blue.svg)](https://golang.org)
-[![Status](https://img.shields.io/badge/status-devnet-yellow.svg)](https://github.com/iljanemesis/archivas)
+[![Status](https://img.shields.io/badge/status-devnet-yellow.svg)](https://github.com/ArchivasNetwork/archivas)
 
 ## What is Archivas?
 
@@ -33,7 +33,7 @@ Farmers allocate disk space to create "plots," then compete to produce blocks an
 ### Installation
 
 ```bash
-git clone https://github.com/iljanemesis/archivas
+git clone https://github.com/ArchivasNetwork/archivas
 cd archivas
 go mod download
 ```
@@ -267,9 +267,9 @@ archivas/
 
 ## Community
 
-- **GitHub:** [github.com/iljanemesis/archivas](https://github.com/iljanemesis/archivas)
+- **GitHub:** [github.com/ArchivasNetwork/archivas](https://github.com/ArchivasNetwork/archivas)
 - **Docs:** See `/docs` folder or `JOURNEY.md`
-- **Issues:** [github.com/iljanemesis/archivas/issues](https://github.com/iljanemesis/archivas/issues)
+- **Issues:** [github.com/ArchivasNetwork/archivas/issues](https://github.com/ArchivasNetwork/archivas/issues)
 
 ## Contributing
 

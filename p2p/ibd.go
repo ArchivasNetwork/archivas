@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/iljanemesis/archivas/metrics"
+	"github.com/ArchivasNetwork/archivas/metrics"
 )
 
 // handleRequestBlocks serves a batch of blocks for IBD

@@ -12,7 +12,7 @@ import (
 	"syscall"
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
-	"github.com/iljanemesis/archivas/wallet"
+	"github.com/ArchivasNetwork/archivas/wallet"
 	"golang.org/x/term"
 )
 

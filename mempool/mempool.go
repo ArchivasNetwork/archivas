@@ -1,6 +1,6 @@
 package mempool
 
-import "github.com/iljanemesis/archivas/ledger"
+import "github.com/ArchivasNetwork/archivas/ledger"
 
 // Mempool stores pending transactions
 type Mempool struct {

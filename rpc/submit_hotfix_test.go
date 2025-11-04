@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	txv1 "github.com/iljanemesis/archivas/pkg/tx/v1"
+	txv1 "github.com/ArchivasNetwork/archivas/pkg/tx/v1"
 )
 
 // TestSubmitMethodHandling tests that /submit returns 405 for non-POST methods

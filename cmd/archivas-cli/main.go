@@ -9,8 +9,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/iljanemesis/archivas/pkg/crypto"
-	txv1 "github.com/iljanemesis/archivas/pkg/tx/v1"
+	"github.com/ArchivasNetwork/archivas/pkg/crypto"
+	txv1 "github.com/ArchivasNetwork/archivas/pkg/tx/v1"
 )
 
 func main() {

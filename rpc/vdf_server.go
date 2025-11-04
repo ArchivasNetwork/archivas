@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/iljanemesis/archivas/ledger"
-	"github.com/iljanemesis/archivas/mempool"
-	"github.com/iljanemesis/archivas/pospace"
+	"github.com/ArchivasNetwork/archivas/ledger"
+	"github.com/ArchivasNetwork/archivas/mempool"
+	"github.com/ArchivasNetwork/archivas/pospace"
 )
 
 // VDFNodeState interface for VDF-enabled node operations

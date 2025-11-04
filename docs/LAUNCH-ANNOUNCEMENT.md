@@ -113,7 +113,7 @@ go run ./cmd/archivas-wallet new
 # Farm!
 ./archivas-farmer farm --plots ./plots --farmer-key <key>
 
-Repo: github.com/iljanemesis/archivas
+Repo: github.com/ArchivasNetwork/archivas
 ```
 
 ### Tweet 9 (Vision)
@@ -142,7 +142,7 @@ Next: Multi-node testnet, VDF activation, public launch.
 
 Farmers, developers, node operators: Join us.
 
-🌾 github.com/iljanemesis/archivas
+🌾 github.com/ArchivasNetwork/archivas
 
 #Archivas #RCHV #ProofOfSpace #Blockchain
 ```
@@ -192,7 +192,7 @@ The native token is **RCHV**. Farmers earn 20 RCHV per block by allocating disk 
 
 ```bash
 # Clone and build
-git clone https://github.com/iljanemesis/archivas
+git clone https://github.com/ArchivasNetwork/archivas
 cd archivas
 go build -o archivas-node ./cmd/archivas-node
 go build -o archivas-farmer ./cmd/archivas-farmer
@@ -223,7 +223,7 @@ go build -o archivas-farmer ./cmd/archivas-farmer
 
 I wanted to prove you can build production-grade consensus from scratch. Archivas demonstrates that Proof-of-Space-and-Time is viable, efficient, and fair.
 
-**Repository:** https://github.com/iljanemesis/archivas
+**Repository:** https://github.com/ArchivasNetwork/archivas
 
 Looking for:
 - Early farmers to test the network
@@ -284,7 +284,7 @@ I built Archivas over the past week - a Layer 1 blockchain using Proof-of-Space-
 - VDFs add temporal security (can't grind or precompute)
 - Demonstrates this consensus model is viable at the L1 layer
 
-**Code:** https://github.com/iljanemesis/archivas
+**Code:** https://github.com/ArchivasNetwork/archivas
 
 Open to feedback on the consensus design, implementation, or roadmap. Happy to answer technical questions!
 

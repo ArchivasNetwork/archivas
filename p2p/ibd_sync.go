@@ -3,7 +3,7 @@ package p2p
 import (
 	"log"
 
-	"github.com/iljanemesis/archivas/metrics"
+	"github.com/ArchivasNetwork/archivas/metrics"
 )
 
 // StartIBD initiates Initial Block Download from connected peers

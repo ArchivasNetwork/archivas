@@ -8,13 +8,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/iljanemesis/archivas/config"
-	"github.com/iljanemesis/archivas/consensus"
-	"github.com/iljanemesis/archivas/ledger"
-	"github.com/iljanemesis/archivas/mempool"
-	"github.com/iljanemesis/archivas/pospace"
-	"github.com/iljanemesis/archivas/rpc"
-	"github.com/iljanemesis/archivas/vdf"
+	"github.com/ArchivasNetwork/archivas/config"
+	"github.com/ArchivasNetwork/archivas/consensus"
+	"github.com/ArchivasNetwork/archivas/ledger"
+	"github.com/ArchivasNetwork/archivas/mempool"
+	"github.com/ArchivasNetwork/archivas/pospace"
+	"github.com/ArchivasNetwork/archivas/rpc"
+	"github.com/ArchivasNetwork/archivas/vdf"
 )
 
 // Block represents a blockchain block with Proof-of-Space and VDF

@@ -74,7 +74,7 @@ Farmers allocate disk space to create "plots," then compete to produce blocks an
 
 ```bash
 # Clone repository
-git clone https://github.com/iljanemesis/archivas
+git clone https://github.com/ArchivasNetwork/archivas
 cd archivas
 
 # Download dependencies
@@ -354,9 +354,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## Community
 
-- **GitHub:** [github.com/iljanemesis/archivas](https://github.com/iljanemesis/archivas)
-- **Discussions:** [GitHub Discussions](https://github.com/iljanemesis/archivas/discussions)
-- **Issues:** [GitHub Issues](https://github.com/iljanemesis/archivas/issues)
+- **GitHub:** [github.com/ArchivasNetwork/archivas](https://github.com/ArchivasNetwork/archivas)
+- **Discussions:** [GitHub Discussions](https://github.com/ArchivasNetwork/archivas/discussions)
+- **Issues:** [GitHub Issues](https://github.com/ArchivasNetwork/archivas/issues)
 - **Twitter:** [@ArchivasChain](https://twitter.com/ArchivasChain) (TBD)
 - **Discord:** [Coming Soon]
 
@@ -450,7 +450,7 @@ A: Yes! Persistence is working, so you can deploy to any server.
 
 ```bash
 # Clone
-git clone https://github.com/iljanemesis/archivas
+git clone https://github.com/ArchivasNetwork/archivas
 cd archivas
 
 # Build all binaries
@@ -502,7 +502,7 @@ If you use Archivas in research, please cite:
   title = {Archivas: A Proof-of-Space-and-Time Layer 1 Blockchain},
   author = {Archivas Labs},
   year = {2025},
-  url = {https://github.com/iljanemesis/archivas}
+  url = {https://github.com/ArchivasNetwork/archivas}
 }
 ```
 
@@ -512,7 +512,7 @@ If you use Archivas in research, please cite:
   <strong>Archivas: Farming the future of decentralized storage</strong> 🌾
   <br/>
   <br/>
-  <a href="https://github.com/iljanemesis/archivas">GitHub</a> •
+  <a href="https://github.com/ArchivasNetwork/archivas">GitHub</a> •
   <a href="docs/WHITEPAPER-OUTLINE.md">Whitepaper</a> •
   <a href="STATUS.md">Status</a> •
   <a href="JOURNEY.md">Story</a>

@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/iljanemesis/archivas/ledger"
-	"github.com/iljanemesis/archivas/mempool"
+	"github.com/ArchivasNetwork/archivas/ledger"
+	"github.com/ArchivasNetwork/archivas/mempool"
 )
 
 // Server provides RPC interface

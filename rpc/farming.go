@@ -13,14 +13,14 @@ import (
 	"time"
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
-	"github.com/iljanemesis/archivas/config"
-	"github.com/iljanemesis/archivas/internal/buildinfo"
-	"github.com/iljanemesis/archivas/ledger"
-	"github.com/iljanemesis/archivas/mempool"
-	"github.com/iljanemesis/archivas/metrics"
-	txv1 "github.com/iljanemesis/archivas/pkg/tx/v1"
-	"github.com/iljanemesis/archivas/pospace"
-	"github.com/iljanemesis/archivas/wallet"
+	"github.com/ArchivasNetwork/archivas/config"
+	"github.com/ArchivasNetwork/archivas/internal/buildinfo"
+	"github.com/ArchivasNetwork/archivas/ledger"
+	"github.com/ArchivasNetwork/archivas/mempool"
+	"github.com/ArchivasNetwork/archivas/metrics"
+	txv1 "github.com/ArchivasNetwork/archivas/pkg/tx/v1"
+	"github.com/ArchivasNetwork/archivas/pospace"
+	"github.com/ArchivasNetwork/archivas/wallet"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 

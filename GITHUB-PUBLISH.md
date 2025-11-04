@@ -97,7 +97,7 @@ git branch -M main
 
 ```bash
 # Add remote (replace with your repo URL)
-git remote add origin https://github.com/iljanemesis/archivas.git
+git remote add origin https://github.com/ArchivasNetwork/archivas.git
 
 # Push to GitHub
 git push -u origin main

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/iljanemesis/archivas/pospace"
+	"github.com/ArchivasNetwork/archivas/pospace"
 )
 
 // Consensus implements the Archivas consensus protocol

@@ -1,4 +1,4 @@
-module github.com/iljanemesis/archivas
+module github.com/ArchivasNetwork/archivas
 
 go 1.23.0
 

@@ -15,9 +15,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/iljanemesis/archivas/logging"
-	"github.com/iljanemesis/archivas/metrics"
-	"github.com/iljanemesis/archivas/vdf"
+	"github.com/ArchivasNetwork/archivas/logging"
+	"github.com/ArchivasNetwork/archivas/metrics"
+	"github.com/ArchivasNetwork/archivas/vdf"
 )
 
 const (
