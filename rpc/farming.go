@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/ArchivasNetwork/archivas/config"
 	"github.com/ArchivasNetwork/archivas/internal/buildinfo"
 	"github.com/ArchivasNetwork/archivas/ledger"
@@ -21,6 +20,7 @@ import (
 	txv1 "github.com/ArchivasNetwork/archivas/pkg/tx/v1"
 	"github.com/ArchivasNetwork/archivas/pospace"
 	"github.com/ArchivasNetwork/archivas/wallet"
+	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -149,6 +149,7 @@ func (s *FarmingServer) Start(addr string) error {
 
 	// v1.2.0: Explorer listing endpoints
 	http.HandleFunc("/blocks/recent", s.wrapMetrics("/blocks/recent", s.handleBlocksRecent))
+	http.HandleFunc("/blocks/since/", s.wrapMetrics("/blocks/since", s.handleBlocksSince))
 	http.HandleFunc("/tx/recent", s.wrapMetrics("/tx/recent", s.handleTxRecent))
 	// Note: /block/<height> already registered above
 
@@ -738,6 +739,81 @@ func (s *FarmingServer) handleBlocksRecent(w http.ResponseWriter, r *http.Reques
 	response := map[string]interface{}{
 		"blocks": formattedBlocks,
 	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleBlocksSince handles GET /blocks/since/<height>?limit=N
+// v1.2.0: IBD endpoint for serving block ranges
+func (s *FarmingServer) handleBlocksSince(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse height from URL
+	path := r.URL.Path[len("/blocks/since/"):]
+	var fromHeight uint64
+	if _, err := fmt.Sscanf(path, "%d", &fromHeight); err != nil {
+		http.Error(w, "Invalid height", http.StatusBadRequest)
+		return
+	}
+
+	// Parse limit (default 512, max 1000)
+	limitStr := r.URL.Query().Get("limit")
+	limit := 512
+	if limitStr != "" {
+		fmt.Sscanf(limitStr, "%d", &limit)
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+	if limit < 1 {
+		limit = 1
+	}
+
+	// Get current tip
+	tipHeight, _, _ := s.nodeState.GetStatus()
+
+	// Build block list
+	blocks := []map[string]interface{}{}
+
+	for h := fromHeight; h < fromHeight+uint64(limit) && h <= tipHeight; h++ {
+		blockRaw, err := s.nodeState.GetBlockByHeight(h)
+		if err != nil {
+			// Stop at first missing block
+			break
+		}
+
+		block, ok := blockRaw.(map[string]interface{})
+		if !ok {
+			break
+		}
+
+		// Convert numeric fields to strings for API consistency
+		formattedBlock := map[string]interface{}{
+			"height":     fmt.Sprintf("%v", block["height"]),
+			"hash":       block["hash"],
+			"prevHash":   block["prevHash"],
+			"timestamp":  fmt.Sprintf("%v", block["timestamp"]),
+			"difficulty": fmt.Sprintf("%v", block["difficulty"]),
+			"challenge":  block["challenge"],
+			"farmer":     block["farmerAddr"],
+			"txCount":    fmt.Sprintf("%v", block["txCount"]),
+			"txs":        block["txs"],
+		}
+
+		blocks = append(blocks, formattedBlock)
+	}
+
+	response := map[string]interface{}{
+		"tipHeight": fmt.Sprintf("%d", tipHeight),
+		"blocks":    blocks,
+	}
+
+	log.Printf("[blocks-since] served %d blocks from %d (tip=%d) to %s",
+		len(blocks), fromHeight, tipHeight, r.RemoteAddr)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
