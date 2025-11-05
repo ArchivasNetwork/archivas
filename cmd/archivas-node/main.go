@@ -905,8 +905,8 @@ func (ns *NodeState) ApplyBlock(blockData json.RawMessage) error {
 				tx := ledger.Transaction{
 					From:   getString(txMap, "from"),
 					To:     getString(txMap, "to"),
-					Amount: getUint64(txMap, "amount"),
-					Fee:    getUint64(txMap, "fee"),
+					Amount: getInt64(txMap, "amount"),
+					Fee:    getInt64(txMap, "fee"),
 					Nonce:  getUint64(txMap, "nonce"),
 				}
 				txs = append(txs, tx)
@@ -1122,6 +1122,13 @@ func getString(m map[string]interface{}, key string) string {
 func getUint64(m map[string]interface{}, key string) uint64 {
 	if val, ok := m[key].(float64); ok {
 		return uint64(val)
+	}
+	return 0
+}
+
+func getInt64(m map[string]interface{}, key string) int64 {
+	if val, ok := m[key].(float64); ok {
+		return int64(val)
 	}
 	return 0
 }
