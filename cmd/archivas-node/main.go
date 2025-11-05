@@ -874,10 +874,56 @@ func (ns *NodeState) GetCurrentHeight() uint64 {
 
 // ApplyBlock applies a block received during IBD
 func (ns *NodeState) ApplyBlock(blockData json.RawMessage) error {
-	// Unmarshal block
-	var block Block
-	if err := json.Unmarshal(blockData, &block); err != nil {
-		return fmt.Errorf("failed to unmarshal block: %w", err)
+	// Unmarshal to map first (blocks from /blocks/range are hex-encoded)
+	var blockMap map[string]interface{}
+	if err := json.Unmarshal(blockData, &blockMap); err != nil {
+		return fmt.Errorf("failed to unmarshal block map: %w", err)
+	}
+
+	// Extract and decode fields
+	height, _ := blockMap["height"].(float64)
+	difficulty, _ := blockMap["difficulty"].(float64)
+	timestamp, _ := blockMap["timestamp"].(float64)
+	farmerAddr, _ := blockMap["farmerAddr"].(string)
+	
+	// Decode hex fields
+	var prevHash, challenge [32]byte
+	if prevHashStr, ok := blockMap["prevHash"].(string); ok {
+		prevHashBytes, _ := hex.DecodeString(prevHashStr)
+		copy(prevHash[:], prevHashBytes)
+	}
+	if challengeStr, ok := blockMap["challenge"].(string); ok {
+		challengeBytes, _ := hex.DecodeString(challengeStr)
+		copy(challenge[:], challengeBytes)
+	}
+
+	// Extract transactions
+	txs := []ledger.Transaction{}
+	if txList, ok := blockMap["txs"].([]interface{}); ok {
+		for _, txRaw := range txList {
+			if txMap, ok := txRaw.(map[string]interface{}); ok {
+				tx := ledger.Transaction{
+					From:   getString(txMap, "from"),
+					To:     getString(txMap, "to"),
+					Amount: getUint64(txMap, "amount"),
+					Fee:    getUint64(txMap, "fee"),
+					Nonce:  getUint64(txMap, "nonce"),
+				}
+				txs = append(txs, tx)
+			}
+		}
+	}
+
+	// Reconstruct Block struct
+	block := Block{
+		Height:        uint64(height),
+		TimestampUnix: int64(timestamp),
+		PrevHash:      prevHash,
+		Difficulty:    uint64(difficulty),
+		Challenge:     challenge,
+		Txs:           txs,
+		Proof:         nil, // Not serialized in /blocks/range
+		FarmerAddr:    farmerAddr,
 	}
 
 	ns.Lock()
@@ -1063,6 +1109,21 @@ func (ns *NodeState) GetCurrentChallenge() ([32]byte, uint64, uint64) {
 	ns.RLock()
 	defer ns.RUnlock()
 	return ns.CurrentChallenge, ns.Consensus.DifficultyTarget, ns.CurrentHeight + 1
+}
+
+// Helper functions for IBD block parsing
+func getString(m map[string]interface{}, key string) string {
+	if val, ok := m[key].(string); ok {
+		return val
+	}
+	return ""
+}
+
+func getUint64(m map[string]interface{}, key string) uint64 {
+	if val, ok := m[key].(float64); ok {
+		return uint64(val)
+	}
+	return 0
 }
 
 // hashBlock computes the hash of a block
