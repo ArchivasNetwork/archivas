@@ -50,7 +50,6 @@ func DefaultIBDConfig(dataDir string) *IBDConfig {
 type NodeIBDInterface interface {
 	GetCurrentHeight() uint64
 	ApplyBlock(blockData json.RawMessage) error
-	GetStatus() (height uint64, difficulty uint64, hash string)
 }
 
 // IBDManager handles Initial Block Download

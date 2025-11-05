@@ -879,7 +879,7 @@ func (s *FarmingServer) handleBlocksRange(w http.ResponseWriter, r *http.Request
 	for h := from; h < from+uint64(limit) && h <= tipHeight; h++ {
 		// Timeout protection
 		if time.Since(fetchStart) > maxFetchTime {
-			log.Printf("[blocks-range] timeout after %v, returning partial batch (%d blocks)", 
+			log.Printf("[blocks-range] timeout after %v, returning partial batch (%d blocks)",
 				time.Since(fetchStart), len(blocks))
 			break
 		}
