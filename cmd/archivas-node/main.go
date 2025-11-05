@@ -430,12 +430,12 @@ func main() {
 			fmt.Printf("📡 Connecting to %d peer(s)/bootnode(s)...\n", len(allPeers))
 		}
 		fmt.Println()
-		
+
 		// v1.2.1: HTTP-based IBD if far behind
 		if len(allPeers) > 0 {
 			go func() {
 				time.Sleep(2 * time.Second) // Wait for peer connections
-				
+
 				// Try each peer until IBD succeeds
 				for _, peerAddr := range allPeers {
 					// Convert peer address to HTTP(S) endpoint
@@ -447,7 +447,7 @@ func main() {
 						// Direct HTTP for other peers (assume localhost or VPN)
 						peerURL = fmt.Sprintf("http://%s", strings.Replace(peerAddr, ":9090", ":8080", 1))
 					}
-					
+
 					if err := runHTTPBasedIBD(nodeState, peerURL); err != nil {
 						log.Printf("[IBD] Failed with peer %s: %v", peerAddr, err)
 						continue
@@ -610,7 +610,7 @@ func (ns *NodeState) AcceptBlock(proof *pospace.Proof, farmerAddr string, farmer
 		TimestampUnix: time.Now().Unix(),
 		PrevHash:      prevHash,
 		Difficulty:    ns.Consensus.DifficultyTarget, // Difficulty when mined
-		Challenge:     ns.CurrentChallenge,           // Challenge used to win
+		Challenge:     proof.Challenge,               // Use proof's challenge (farmer might be slightly behind VDF)
 		Txs:           allTxs,
 		Proof:         proof,
 		FarmerAddr:    farmerAddr,
@@ -686,13 +686,13 @@ func (ns *NodeState) OnNewBlock(height uint64, hash [32]byte, fromPeer string) {
 	// If we're behind, request blocks
 	if height > currentHeight {
 		gap := height - currentHeight
-		
+
 		// v1.1.1: Use batched IBD for large gaps (>10 blocks)
 		if gap > 10 {
-			log.Printf("[p2p] We're behind by %d blocks (our=%d, peer=%d), starting IBD", 
+			log.Printf("[p2p] We're behind by %d blocks (our=%d, peer=%d), starting IBD",
 				gap, currentHeight, height)
 			if ns.P2P != nil {
-				ns.P2P.StartIBD(currentHeight+1)
+				ns.P2P.StartIBD(currentHeight + 1)
 			}
 		} else {
 			// Small gap, use single block requests
@@ -761,7 +761,7 @@ func (ns *NodeState) OnBlocksRangeRequest(fromHeight uint64, maxBlocks uint32) (
 	// Serve blocks from memory or disk
 	for h := fromHeight; h < fromHeight+count; h++ {
 		var block Block
-		
+
 		// Try memory first
 		if int(h) < len(ns.Chain) {
 			block = ns.Chain[h]
@@ -1049,38 +1049,38 @@ func runHTTPBasedIBD(ns *NodeState, peerURL string) error {
 	ns.RLock()
 	localTip := ns.CurrentHeight
 	ns.RUnlock()
-	
+
 	// Get remote tip
 	remoteTip, err := fetchRemoteTip(peerURL)
 	if err != nil {
 		return fmt.Errorf("failed to fetch remote tip: %w", err)
 	}
-	
+
 	gap := remoteTip - localTip
-	
+
 	// Only run IBD if significantly behind
 	if gap <= 200 {
 		log.Printf("[IBD] Node is close to tip (gap: %d), using P2P sync", gap)
 		return nil
 	}
-	
+
 	log.Printf("[IBD] Starting HTTP-based sync: local=%d remote=%d (%.1f%% behind, %d blocks)",
 		localTip, remoteTip, float64(localTip)*100/float64(remoteTip), gap)
-	
+
 	const batchSize = 512
 	lastLogTime := time.Now()
-	
+
 	for {
 		ns.RLock()
 		currentHeight := ns.CurrentHeight
 		ns.RUnlock()
-		
+
 		// Check if caught up
 		if remoteTip-currentHeight <= 50 {
 			log.Printf("[IBD] Complete! Synced to height %d (gap: %d blocks)", currentHeight, remoteTip-currentHeight)
 			return nil
 		}
-		
+
 		// Fetch next batch
 		blocks, newRemoteTip, err := fetchBlockBatch(peerURL, currentHeight+1, batchSize)
 		if err != nil {
@@ -1088,38 +1088,38 @@ func runHTTPBasedIBD(ns *NodeState, peerURL string) error {
 			time.Sleep(5 * time.Second)
 			continue
 		}
-		
+
 		// Update remote tip (chain may be growing)
 		if newRemoteTip > remoteTip {
 			remoteTip = newRemoteTip
 		}
-		
+
 		// Apply blocks
 		for _, blockData := range blocks {
 			if err := applyIBDBlock(ns, blockData); err != nil {
 				return fmt.Errorf("failed to apply block: %w", err)
 			}
 		}
-		
+
 		// Progress logging (every 5 seconds)
 		if time.Since(lastLogTime) > 5*time.Second {
 			ns.RLock()
 			currentHeight = ns.CurrentHeight
 			ns.RUnlock()
-			
+
 			pct := float64(currentHeight) * 100 / float64(remoteTip)
 			remaining := remoteTip - currentHeight
 			log.Printf("[IBD] Progress: %d/%d (%.1f%% complete, %d blocks remaining)",
 				currentHeight, remoteTip, pct, remaining)
 			lastLogTime = time.Now()
 		}
-		
+
 		// If no blocks received, we might be caught up
 		if len(blocks) == 0 {
 			break
 		}
 	}
-	
+
 	return nil
 }
 
@@ -1131,51 +1131,51 @@ func fetchRemoteTip(peerURL string) (uint64, error) {
 		return 0, err
 	}
 	defer resp.Body.Close()
-	
+
 	var result struct {
 		Height string `json:"height"`
 	}
-	
+
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return 0, err
 	}
-	
+
 	return strconv.ParseUint(result.Height, 10, 64)
 }
 
 // fetchBlockBatch fetches a batch of blocks from /blocks/since
 func fetchBlockBatch(peerURL string, fromHeight uint64, limit int) ([]map[string]interface{}, uint64, error) {
 	url := fmt.Sprintf("%s/blocks/since/%d?limit=%d", peerURL, fromHeight, limit)
-	
+
 	resp, err := http.Get(url)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
 		return nil, 0, fmt.Errorf("HTTP %d: %s", resp.StatusCode, body)
 	}
-	
+
 	var result struct {
 		TipHeight string                   `json:"tipHeight"`
 		Blocks    []map[string]interface{} `json:"blocks"`
 	}
-	
+
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, 0, err
 	}
-	
+
 	tipHeight, err := strconv.ParseUint(result.TipHeight, 10, 64)
 	if err != nil {
 		return nil, 0, fmt.Errorf("invalid tipHeight: %s", result.TipHeight)
 	}
-	
+
 	if tipHeight == 0 {
 		return nil, 0, fmt.Errorf("peer returned tipHeight=0")
 	}
-	
+
 	return result.Blocks, tipHeight, nil
 }
 
@@ -1186,21 +1186,21 @@ func applyIBDBlock(ns *NodeState, blockData map[string]interface{}) error {
 	if err != nil {
 		return err
 	}
-	
+
 	var block Block
 	if err := json.Unmarshal(blockJSON, &block); err != nil {
 		return err
 	}
-	
+
 	ns.Lock()
 	defer ns.Unlock()
-	
+
 	// Validate height continuity
 	expectedHeight := ns.CurrentHeight + 1
 	if block.Height != expectedHeight {
 		return fmt.Errorf("height discontinuity: expected %d, got %d", expectedHeight, block.Height)
 	}
-	
+
 	// Validate parent hash
 	if len(ns.Chain) > 0 {
 		prevBlock := ns.Chain[len(ns.Chain)-1]
@@ -1209,7 +1209,7 @@ func applyIBDBlock(ns *NodeState, blockData map[string]interface{}) error {
 			return fmt.Errorf("parent hash mismatch at height %d", block.Height)
 		}
 	}
-	
+
 	// Apply transactions to state
 	for _, tx := range block.Txs {
 		if tx.From == "coinbase" {
@@ -1228,30 +1228,30 @@ func applyIBDBlock(ns *NodeState, blockData map[string]interface{}) error {
 			}
 		}
 	}
-	
+
 	// Add block to chain
 	ns.Chain = append(ns.Chain, block)
 	ns.CurrentHeight = block.Height
-	
+
 	// Persist to disk
 	if ns.BlockStore != nil {
 		if err := ns.BlockStore.SaveBlock(block.Height, block); err != nil {
 			return fmt.Errorf("failed to save block %d: %w", block.Height, err)
 		}
 	}
-	
+
 	// Update tip in metadata
 	if ns.MetaStore != nil {
 		if err := ns.MetaStore.SaveTipHeight(block.Height); err != nil {
 			log.Printf("[IBD] Warning: failed to save tip height: %v", err)
 		}
 	}
-	
+
 	// Update metrics occasionally
 	if block.Height%100 == 0 {
 		metrics.UpdateTipHeight(block.Height)
 	}
-	
+
 	return nil
 }
 
