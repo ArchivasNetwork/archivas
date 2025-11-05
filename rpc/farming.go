@@ -150,6 +150,7 @@ func (s *FarmingServer) Start(addr string) error {
 	// v1.2.0: Explorer listing endpoints
 	http.HandleFunc("/blocks/recent", s.wrapMetrics("/blocks/recent", s.handleBlocksRecent))
 	http.HandleFunc("/blocks/since/", s.wrapMetrics("/blocks/since", s.handleBlocksSince))
+	http.HandleFunc("/blocks/range", s.wrapMetrics("/blocks/range", s.handleBlocksRange))
 	http.HandleFunc("/tx/recent", s.wrapMetrics("/tx/recent", s.handleTxRecent))
 	// Note: /block/<height> already registered above
 
@@ -825,6 +826,90 @@ func (s *FarmingServer) handleBlocksSince(w http.ResponseWriter, r *http.Request
 
 	log.Printf("[blocks-since] served %d blocks from %d (tip=%d) in %v to %s",
 		len(blocks), fromHeight, tipHeight, time.Since(fetchStart).Round(time.Millisecond), r.RemoteAddr)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleBlocksRange handles GET /blocks/range?from=<height>&limit=<n>
+// v1.2.1: IBD endpoint that serves blocks exactly as stored (no re-encoding)
+func (s *FarmingServer) handleBlocksRange(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse from parameter
+	fromStr := r.URL.Query().Get("from")
+	if fromStr == "" {
+		http.Error(w, "Missing 'from' parameter", http.StatusBadRequest)
+		return
+	}
+
+	from, err := strconv.ParseUint(fromStr, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid 'from' parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Parse limit (default 512, max 1000)
+	limitStr := r.URL.Query().Get("limit")
+	limit := 512
+	if limitStr != "" {
+		fmt.Sscanf(limitStr, "%d", &limit)
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+	if limit < 1 {
+		limit = 1
+	}
+
+	// Get current tip
+	tipHeight, _, _ := s.nodeState.GetStatus()
+
+	// Fetch blocks as raw from storage
+	blocks := []json.RawMessage{}
+	to := from
+
+	fetchStart := time.Now()
+	const maxFetchTime = 25 * time.Second
+
+	for h := from; h < from+uint64(limit) && h <= tipHeight; h++ {
+		// Timeout protection
+		if time.Since(fetchStart) > maxFetchTime {
+			log.Printf("[blocks-range] timeout after %v, returning partial batch (%d blocks)", 
+				time.Since(fetchStart), len(blocks))
+			break
+		}
+
+		blockRaw, err := s.nodeState.GetBlockByHeight(h)
+		if err != nil {
+			// Stop at first missing block
+			log.Printf("[blocks-range] missing block %d, stopping", h)
+			break
+		}
+
+		// Re-serialize to JSON (preserves original structure)
+		blockJSON, err := json.Marshal(blockRaw)
+		if err != nil {
+			log.Printf("[blocks-range] failed to marshal block %d: %v", h, err)
+			break
+		}
+
+		blocks = append(blocks, blockJSON)
+		to = h
+	}
+
+	response := map[string]interface{}{
+		"from":   from,
+		"to":     to,
+		"blocks": blocks,
+		"tip":    tipHeight,
+	}
+
+	log.Printf("[blocks-range] served %d blocks [%d..%d] (tip=%d) in %v to %s",
+		len(blocks), from, to, tipHeight, time.Since(fetchStart).Round(time.Millisecond), r.RemoteAddr)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)

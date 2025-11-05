@@ -245,9 +245,9 @@ func (m *IBDManager) fetchRemoteTip(peerURL string) (uint64, error) {
 	return height, nil
 }
 
-// fetchBlockBatch fetches a batch of blocks from /blocks/since
+// fetchBlockBatch fetches a batch of blocks from /blocks/range
 func (m *IBDManager) fetchBlockBatch(peerURL string, fromHeight uint64, limit int) ([]json.RawMessage, uint64, error) {
-	url := fmt.Sprintf("%s/blocks/since/%d?limit=%d", peerURL, fromHeight, limit)
+	url := fmt.Sprintf("%s/blocks/range?from=%d&limit=%d", peerURL, fromHeight, limit)
 
 	client := &http.Client{
 		Timeout: 30 * time.Second,
@@ -265,24 +265,21 @@ func (m *IBDManager) fetchBlockBatch(peerURL string, fromHeight uint64, limit in
 	}
 
 	var result struct {
-		TipHeight string            `json:"tipHeight"`
-		Blocks    []json.RawMessage `json:"blocks"`
+		From   uint64            `json:"from"`
+		To     uint64            `json:"to"`
+		Blocks []json.RawMessage `json:"blocks"`
+		Tip    uint64            `json:"tip"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, 0, err
 	}
 
-	tipHeight, err := strconv.ParseUint(result.TipHeight, 10, 64)
-	if err != nil {
-		return nil, 0, fmt.Errorf("invalid tipHeight: %s", result.TipHeight)
+	if result.Tip == 0 {
+		return nil, 0, fmt.Errorf("peer returned tip=0")
 	}
 
-	if tipHeight == 0 {
-		return nil, 0, fmt.Errorf("peer returned tipHeight=0")
-	}
-
-	return result.Blocks, tipHeight, nil
+	return result.Blocks, result.Tip, nil
 }
 
 // RunIBDWithRetry attempts IBD against multiple peers
