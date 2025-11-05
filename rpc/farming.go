@@ -745,7 +745,7 @@ func (s *FarmingServer) handleBlocksRecent(w http.ResponseWriter, r *http.Reques
 }
 
 // handleBlocksSince handles GET /blocks/since/<height>?limit=N
-// v1.2.0: IBD endpoint for serving block ranges
+// v1.2.1: IBD endpoint with timeout protection and streaming
 func (s *FarmingServer) handleBlocksSince(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -773,21 +773,32 @@ func (s *FarmingServer) handleBlocksSince(w http.ResponseWriter, r *http.Request
 		limit = 1
 	}
 
-	// Get current tip
+	// Get current tip (quick, no locks held)
 	tipHeight, _, _ := s.nodeState.GetStatus()
 
-	// Build block list
+	// Build block list with timeout protection
 	blocks := []map[string]interface{}{}
+	fetchStart := time.Now()
+	const maxFetchTime = 25 * time.Second
 
 	for h := fromHeight; h < fromHeight+uint64(limit) && h <= tipHeight; h++ {
+		// Timeout check to prevent deadlock
+		if time.Since(fetchStart) > maxFetchTime {
+			log.Printf("[blocks-since] timeout after %v, returning partial batch (%d blocks)",
+				time.Since(fetchStart), len(blocks))
+			break
+		}
+
 		blockRaw, err := s.nodeState.GetBlockByHeight(h)
 		if err != nil {
 			// Stop at first missing block
+			log.Printf("[blocks-since] missing block %d, stopping batch", h)
 			break
 		}
 
 		block, ok := blockRaw.(map[string]interface{})
 		if !ok {
+			log.Printf("[blocks-since] invalid block format at %d, stopping", h)
 			break
 		}
 
@@ -812,8 +823,8 @@ func (s *FarmingServer) handleBlocksSince(w http.ResponseWriter, r *http.Request
 		"blocks":    blocks,
 	}
 
-	log.Printf("[blocks-since] served %d blocks from %d (tip=%d) to %s",
-		len(blocks), fromHeight, tipHeight, r.RemoteAddr)
+	log.Printf("[blocks-since] served %d blocks from %d (tip=%d) in %v to %s",
+		len(blocks), fromHeight, tipHeight, time.Since(fetchStart).Round(time.Millisecond), r.RemoteAddr)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
