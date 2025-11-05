@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -184,11 +185,16 @@ func (s *FarmingServer) corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// wrapMetrics wraps an HTTP handler to increment request metrics
+// wrapMetrics wraps an HTTP handler to increment request metrics and add timeout
 func (s *FarmingServer) wrapMetrics(endpoint string, handler http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		metrics.RPCRequests.WithLabelValues(endpoint).Inc()
-		handler(w, r)
+		
+		// Add timeout to prevent deadlocks (v1.2.2)
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		
+		handler(w, r.WithContext(ctx))
 	}
 }
 

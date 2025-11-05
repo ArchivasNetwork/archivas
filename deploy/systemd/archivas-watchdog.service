@@ -1,0 +1,26 @@
+[Unit]
+Description=Archivas Node Watchdog
+Documentation=https://github.com/ArchivasNetwork/archivas
+After=network.target archivas-node.service
+Wants=archivas-node.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/archivas
+ExecStart=/home/ubuntu/archivas/scripts/node-watchdog.sh
+Restart=always
+RestartSec=30
+
+# Environment
+Environment="RPC_URL=http://127.0.0.1:8080"
+Environment="CHECK_INTERVAL=60"
+Environment="TIMEOUT=5"
+Environment="SERVICE_NAME=archivas-node"
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+
