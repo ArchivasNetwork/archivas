@@ -81,7 +81,7 @@ Archivas is a Layer 1 blockchain that uses **Proof-of-Space-and-Time** (PoST) co
 
 * **API Reference:** [developers/api-reference.md](developers/api-reference.md)
 * **Developer Guide:** [developer-quickstart.md](developer-quickstart.md)
-* **Farmer Guide:** [setup-farmer.md](setup-farmer.md)
+* **Farmer Guide:** [farmers/setup-farmer.md](farmers/setup-farmer.md)
 
 ***
 
