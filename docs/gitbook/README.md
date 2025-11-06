@@ -79,7 +79,7 @@ Archivas is a Layer 1 blockchain that uses **Proof-of-Space-and-Time** (PoST) co
 
 ### Documentation
 
-* **API Reference:** [api-reference.md](api-reference.md)
+* **API Reference:** [developers/api-reference.md](developers/api-reference.md)
 * **Developer Guide:** [developer-quickstart.md](developer-quickstart.md)
 * **Farmer Guide:** [setup-farmer.md](setup-farmer.md)
 
@@ -91,9 +91,9 @@ Choose your path:
 
 ### I want to build apps
 
-→ [Developer Quickstart](developer-quickstart.md)\
-→ [TypeScript SDK Guide](sdk-guide.md)\
-→ [API Reference](api-reference.md)
+→ [Developer Quickstart](developer-quickstart.md)  
+→ [TypeScript SDK Guide](developers/sdk-guide.md)  
+→ [API Reference](developers/api-reference.md)
 
 ### I want to farm RCHV
 
@@ -185,4 +185,4 @@ Archivas is **experimental testnet software**. It has not been audited for secur
 
 ***
 
-**Ready to dive in?** Start with the [Quick Start Guide](quick-start.md) or explore the [API Reference](api-reference.md)!
+**Ready to dive in?** Start with the [Quick Start Guide](getting-started/quick-start.md) or explore the [API Reference](developers/api-reference.md)!
