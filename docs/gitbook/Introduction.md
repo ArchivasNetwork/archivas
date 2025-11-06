@@ -97,5 +97,5 @@ Built from scratch in Go with a modular, extensible architecture.
 
 ---
 
-**Next:** [Getting Started →](Getting-Started.md)
+**Next:** [Getting Started →](getting-started/quick-start.md)
 

@@ -273,5 +273,5 @@ Should return: `{"genesisHash":"11b6fedb68f1da0f..."}`
 ---
 
 **Ready to farm?** [Testnet Guide →](Testnet-Guide.md)  
-**Want to understand the tech?** [Architecture →](Architecture.md)
+**Want to understand the tech?** [Architecture Overview →](architecture/overview.md)
 

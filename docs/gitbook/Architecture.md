@@ -307,6 +307,6 @@ Node A (at height 50)         Node B (at height 0)
 
 ---
 
-**Next:** [Consensus Details →](Consensus.md)  
-**Back:** [← Introduction](Introduction.md)
+**Next:** [Consensus Details →](architecture/consensus.md)  
+**Back:** [← Introduction](introduction/proof-of-space-time.md)
 

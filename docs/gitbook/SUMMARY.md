@@ -47,7 +47,7 @@
 
 ## Operations
 
-* [Seed Node Setup](../operations/seed-node.md)
+* [Seed Node Setup](operations/seed-node.md)
 * [Metrics & Monitoring](operations/monitoring.md)
 * [Security Best Practices](operations/security.md)
 * [Deployment Guide](operations/deployment.md)
