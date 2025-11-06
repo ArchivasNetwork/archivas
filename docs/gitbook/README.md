@@ -97,13 +97,13 @@ Choose your path:
 
 ### I want to farm RCHV
 
-→ [What is Farming?](what-is-farming.md)\
-→ [Setting Up a Farmer](setup-farmer.md)\
-→ [Creating Plots](creating-plots.md)
+→ [What is Farming?](farmers/what-is-farming.md)  
+→ [Setting Up a Farmer](farmers/setup-farmer.md)  
+→ [Creating Plots](farmers/creating-plots.md)
 
 ### I want to run a node
 
-→ [Running a Node](running-node.md)\
+→ [Running a Node](farmers/running-node.md)  
 → [Seed Node Setup](../SEED_HOST.md)
 
 ***
