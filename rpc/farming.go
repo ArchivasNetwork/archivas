@@ -1417,9 +1417,14 @@ func (s *FarmingServer) handleSubmitV1(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Debug: Log received transaction
+	log.Printf("[submit] Received tx from %s to %s, amount=%d, fee=%d, nonce=%d",
+		stx.Tx.From, stx.Tx.To, stx.Tx.Amount, stx.Tx.Fee, stx.Tx.Nonce)
+
 	// Verify signature
 	valid, err := txv1.VerifySignedTx(&stx)
 	if err != nil {
+		log.Printf("[submit] Signature verification failed: %v", err)
 		response := map[string]interface{}{
 			"ok":    false,
 			"error": fmt.Sprintf("Verification error: %v", err),
@@ -1431,6 +1436,7 @@ func (s *FarmingServer) handleSubmitV1(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !valid {
+		log.Printf("[submit] Signature invalid (verification returned false)")
 		response := map[string]interface{}{
 			"ok":    false,
 			"error": "Invalid signature",
@@ -1440,6 +1446,8 @@ func (s *FarmingServer) handleSubmitV1(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(response)
 		return
 	}
+	
+	log.Printf("[submit] Signature verified successfully")
 
 	// Convert txv1 to ledger.Transaction format for mempool
 	// Decode pubkey and signature from base64
