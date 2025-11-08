@@ -1518,6 +1518,10 @@ func (s *FarmingServer) handleSubmitV1(w http.ResponseWriter, r *http.Request) {
 
 	// Add to mempool
 	s.mempool.Add(tx)
+	
+	// Log successful addition
+	log.Printf("[mempool] Added transaction from %s to mempool (hash: %s, amount: %d, fee: %d)",
+		tx.From, stx.Hash, tx.Amount, tx.Fee)
 
 	// Return success
 	response := map[string]interface{}{
