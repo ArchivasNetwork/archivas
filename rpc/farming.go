@@ -1441,8 +1441,85 @@ func (s *FarmingServer) handleSubmitV1(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Convert to ledger.Transaction and add to mempool
-	// For now, return success
+	// Convert txv1 to ledger.Transaction format for mempool
+	// Decode pubkey and signature from base64
+	pubKeyBytes, err := txv1.DecodePubKey(stx.PubKey)
+	if err != nil {
+		response := map[string]interface{}{
+			"ok":    false,
+			"error": fmt.Sprintf("Failed to decode public key: %v", err),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	sigBytes, err := txv1.DecodeSig(stx.Sig)
+	if err != nil {
+		response := map[string]interface{}{
+			"ok":    false,
+			"error": fmt.Sprintf("Failed to decode signature: %v", err),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	// Create ledger.Transaction from txv1 format
+	tx := ledger.Transaction{
+		From:         stx.Tx.From,
+		To:           stx.Tx.To,
+		Amount:       int64(stx.Tx.Amount),
+		Fee:          int64(stx.Tx.Fee),
+		Nonce:        stx.Tx.Nonce,
+		SenderPubKey: pubKeyBytes,
+		Signature:    sigBytes,
+	}
+
+	// Verify sender account exists and has sufficient balance
+	sender := s.worldState.Accounts[tx.From]
+
+	if sender == nil {
+		response := map[string]interface{}{
+			"ok":    false,
+			"error": "Sender account does not exist or has zero balance",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	totalCost := tx.Amount + tx.Fee
+	if sender.Balance < totalCost {
+		response := map[string]interface{}{
+			"ok":    false,
+			"error": fmt.Sprintf("Insufficient balance: have %d, need %d", sender.Balance, totalCost),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	// Verify nonce matches
+	if tx.Nonce != sender.Nonce {
+		response := map[string]interface{}{
+			"ok":    false,
+			"error": fmt.Sprintf("Invalid nonce: expected %d, got %d", sender.Nonce, tx.Nonce),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	// Add to mempool
+	s.mempool.Add(tx)
+
+	// Return success
 	response := map[string]interface{}{
 		"ok":   true,
 		"hash": stx.Hash,
