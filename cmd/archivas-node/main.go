@@ -571,6 +571,7 @@ func (ns *NodeState) AcceptBlock(proof *pospace.Proof, farmerAddr string, farmer
 
 	// Get pending transactions
 	pending := ns.Mempool.Pending()
+	log.Printf("[block] Creating block %d with %d pending transactions from mempool", nextHeight, len(pending))
 
 	// Create coinbase transaction (block reward to farmer)
 	coinbase := ledger.Transaction{
