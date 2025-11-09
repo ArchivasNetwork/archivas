@@ -24,6 +24,7 @@
 * [Transaction Signing](developers/transaction-signing.md)
 * [Block Explorer Integration](developers/explorer-integration.md)
 * [Rate Limits & Best Practices](developers/best-practices.md)
+* [Archivist Wallet Privacy Policy](developers/archivist-privacy-policy.md)
 
 ## For Farmers
 
