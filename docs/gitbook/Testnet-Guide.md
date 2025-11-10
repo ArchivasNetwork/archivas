@@ -13,18 +13,12 @@
 
 ### Bootstrap Nodes
 
-**Primary Bootnode:**
+**Bootnode:**
 ```
+Hostname: seed.archivas.ai
 IP: 57.129.148.132
 Port: 9090
-RPC: http://57.129.148.132:8080
-```
-
-**Secondary Bootnode:**
-```
-IP: 72.251.11.191
-Port: 9090
-RPC: http://72.251.11.191:8080
+RPC: https://seed.archivas.ai
 ```
 
 ### Genesis Verification
@@ -104,7 +98,7 @@ nohup ./archivas-node \
   --db ./data \
   --genesis genesis/devnet.genesis.json \
   --network-id archivas-devnet-v3 \
-  --bootnodes 57.129.148.132:9090,72.251.11.191:9090 \
+  --bootnodes seed.archivas.ai:9090 \
   > logs/node.log 2>&1 &
 
 # Watch sync
@@ -140,7 +134,7 @@ tail -f logs/timelord.log
 curl http://localhost:8080/chainTip | jq .height
 
 # Compare to network
-curl http://57.129.148.132:8080/chainTip | jq .height
+curl https://seed.archivas.ai/chainTip | jq .height
 
 # Should match!
 ```
@@ -250,8 +244,8 @@ grep "connected to peer" logs/node.log
 # Check for errors
 grep "error\|failed" logs/node.log | tail -20
 
-# Try different bootnode
---bootnodes 72.251.11.191:9090
+# Verify bootnode connectivity
+nc -zv seed.archivas.ai 9090
 ```
 
 **Database corruption:**

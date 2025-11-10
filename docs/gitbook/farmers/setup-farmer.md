@@ -65,52 +65,55 @@ go build -o archivas-cli ./cmd/archivas-cli
 
 ---
 
-## Step 3: Generate Wallet
+## Step 3: Create Your Farmer Identity
+
+The farmer binary manages its own identity keys using **secp256k1** (32-byte private key, 33-byte compressed public key).  
+Let the binary generate the keys for you and save them before plotting continues.
 
 ```bash
-# Generate new wallet
-./archivas-cli keygen
+# Prepare a directory for plots first
+mkdir -p ~/archivas-plots
 
-# Output:
-# Mnemonic: word1 word2 word3 ... word24
-# Address:  arcv1...
-# PubKey:   ...
-# PrivKey:  ...
+# Let the farmer generate its own identity (secp256k1) and start your first plot
+./archivas-farmer plot \
+  --size 28 \
+  --path ~/archivas-plots
+
+# The command immediately prints something like:
+#  Generated new farmer identity:
+#    Address:     arcv1...
+#    Public Key:  02ab... (use for --farmer-pubkey)
+#    Private Key: 1f2c... (use for --farmer-privkey)
+#  ⚠️  Save both keys! You'll need the private key to farm.
+#
+# Copy the Address, Public Key, and Private Key to a safe place.
+# After the message, the same command continues generating plot-k28.arcv in ~/archivas-plots.
 ```
 
-**SAVE THESE!** Especially:
-- Mnemonic (24 words) - backup safely
-- Address - where you'll receive rewards
-- PrivKey - needed for farming
+If you only needed to record the keys (for example, to plot on another machine), you can press `Ctrl+C` once you have copied them, then rerun the command later with `--farmer-pubkey <saved_key>` to start plotting.
+
+**Important:** Do not mix these keys with the Ed25519 keys produced by `archivas-cli`.  
+The farmer currently requires the secp256k1 keys printed by the step above.
 
 ---
 
 ## Step 4: Create Plots
 
 ```bash
-# Create plots directory
-mkdir -p ~/archivas-plots
-
-# Create your first k28 plot
+# Create additional k28 plots (use the public key captured in Step 3)
 ./archivas-farmer plot \
   --size 28 \
-  --path ~/archivas-plots/plot-k28-1.arcv \
+  --path ~/archivas-plots \
   --farmer-pubkey YOUR_PUBKEY_FROM_STEP_3
 
-# This takes 10-30 minutes depending on CPU
-# Progress will be shown
+# Each run drops a file such as ~/archivas-plots/plot-k28.arcv
+# Repeat to add more plots (the farmer auto-increments filenames):
+./archivas-farmer plot --size 28 --path ~/archivas-plots --farmer-pubkey YOUR_PUBKEY_FROM_STEP_3
 ```
 
-**Create more plots:**
-```bash
-# Plot 2
-./archivas-farmer plot --size 28 --path ~/archivas-plots/plot-k28-2.arcv --farmer-pubkey YOUR_PUBKEY
-
-# Plot 3
-./archivas-farmer plot --size 28 --path ~/archivas-plots/plot-k28-3.arcv --farmer-pubkey YOUR_PUBKEY
-
-# etc...
-```
+**Notes:**
+- The `--path` flag points to a directory; the farmer names the plot automatically (`plot-k28.arcv`, `plot-k28-1.arcv`, ...).
+- You can run multiple plot commands in parallel if you have CPU and disk headroom.
 
 ---
 
@@ -133,6 +136,8 @@ ps aux | grep archivas-farmer
 # Watch logs
 tail -f ~/archivas/logs/farmer.log
 ```
+
+**Tip:** The `--farmer-privkey` value is the 64-character hex string printed in Step 3 (32-byte secp256k1 key). If you see “must be 32 bytes”, double-check that you copied the key from the farmer output and not the Ed25519 key from `archivas-cli`.
 
 **Expected output:**
 ```

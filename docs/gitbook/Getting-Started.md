@@ -230,15 +230,12 @@ nc -zv 57.129.148.132 9090
 
 ### Bootstrap Nodes
 
-**Primary:**
+**Bootnode:**
+- Hostname: seed.archivas.ai
 - IP: 57.129.148.132
 - Port: 9090
-- Location: US
+- RPC: https://seed.archivas.ai
 
-**Secondary:**
-- IP: 72.251.11.191
-- Port: 9090
-- Location: US
 
 ### Genesis
 

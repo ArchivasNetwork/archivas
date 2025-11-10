@@ -64,10 +64,9 @@ go build -o archivas-node ./cmd/archivas-node
 ```bash
 # Already included in repo
 cat genesis/devnet.genesis.json
-
-# Verify genesis hash
-# Should be: de7ad6cff236a2aae89bca258445b8dc5ea390339a5af75d8492adac8a1abc84
 ```
+
+The genesis file defines the initial network state. The node will compute and display the genesis hash on startup.
 
 ---
 
@@ -75,19 +74,34 @@ cat genesis/devnet.genesis.json
 
 ### Basic Command
 
+**Important:** To connect to the Archivas network, you **must** specify at least one bootnode using `--bootnodes`.
+
 ```bash
 ./archivas-node \
   --rpc 127.0.0.1:8080 \
   --p2p :9090 \
   --genesis genesis/devnet.genesis.json \
-  --network-id archivas-devnet-v4
+  --network-id archivas-devnet-v4 \
+  --bootnodes seed.archivas.ai:9090
 ```
 
-**Flags:**
-- `--rpc`: RPC listen address (127.0.0.1 for localhost only)
-- `--p2p`: P2P listen address (:9090 for all interfaces)
-- `--genesis`: Path to genesis file
-- `--network-id`: Network identifier
+**Required flags:**
+- `--genesis`: Path to genesis file (required on first start)
+- `--network-id`: Network identifier (default: `archivas-devnet-v3`; **must specify `archivas-devnet-v4`** for current devnet)
+- `--bootnodes`: **Required** - Bootnode address to connect to the network
+  - Use: `seed.archivas.ai:9090` (or `57.129.148.132:9090`)
+  - Example: `--bootnodes seed.archivas.ai:9090`
+
+**Optional flags:**
+- `--rpc`: RPC listen address (default: `:8080` binds to all interfaces; use `127.0.0.1:8080` for localhost only)
+- `--p2p`: P2P listen address (default: `:9090` binds to all interfaces)
+- `--db`: Database directory path (default: `./data`)
+- `--peer`: Additional peer addresses (e.g., `ip1:9090,ip2:9090`)
+- `--vdf-required`: Require VDF proofs in blocks (PoSpace+Time mode)
+- `--enable-gossip`: Enable automatic peer discovery (default: `true`)
+- `--max-peers`: Maximum number of peer connections (default: `20`)
+
+**Note:** Without `--bootnodes`, your node will start but won't connect to the network. Once connected to bootnodes, the node will automatically discover additional peers via gossip and sync blocks via IBD (Initial Block Download).
 
 ### As Background Service
 
@@ -101,6 +115,7 @@ mkdir -p logs
   --p2p :9090 \
   --genesis genesis/devnet.genesis.json \
   --network-id archivas-devnet-v4 \
+  --bootnodes seed.archivas.ai:9090 \
   > logs/node.log 2>&1 &
 
 # Check it's running
@@ -119,14 +134,14 @@ When you first start, the node will sync from peers:
 ```
 💾 Database opened: ./data
 🌱 Fresh start from genesis file
-   Genesis Hash: de7ad6cff236a2aa
+   Genesis Hash: <hash>
    Network ID: archivas-devnet-v4
 
 🔄 Syncing from peers...
 📥 Downloaded blocks 0-1000 (1.2 MB)
 📥 Downloaded blocks 1000-2000 (1.1 MB)
 ...
-✅ Sync complete! Height: 64000
+✅ Sync complete! Height: <current_height>
 ```
 
 **Initial sync time:** 5-30 minutes (depends on network speed)
@@ -156,7 +171,8 @@ ExecStart=/home/YOUR_USERNAME/archivas/archivas-node \
   --rpc 127.0.0.1:8080 \
   --p2p :9090 \
   --genesis /home/YOUR_USERNAME/archivas/genesis/devnet.genesis.json \
-  --network-id archivas-devnet-v4
+  --network-id archivas-devnet-v4 \
+  --bootnodes seed.archivas.ai:9090
 
 Restart=always
 RestartSec=10
@@ -223,7 +239,7 @@ tail -f logs/node.log | grep -E "Accepted block|NEW_BLOCK|height"
 ### Metrics
 
 ```bash
-# Prometheus metrics
+# Prometheus metrics (local node only)
 curl http://localhost:8080/metrics
 
 # Key metrics:
@@ -232,6 +248,8 @@ curl http://localhost:8080/metrics
 # - archivas_difficulty
 # - archivas_blocks_total
 ```
+
+**Note:** The `/metrics` endpoint is available on local nodes. The public seed node (`seed.archivas.ai`) blocks `/metrics` for security reasons.
 
 ---
 
@@ -258,9 +276,12 @@ sleep 2
 **Problem:** Node is isolated.
 
 **Solution:**
-- Check firewall allows port 9090
+- **Check you specified `--bootnodes`** - This is required to connect to the network
+- Verify bootnode address is correct: `seed.archivas.ai:9090` (or `57.129.148.132:9090`)
+- Check firewall allows port 9090 (outbound for connections, inbound for accepting peers)
 - Verify internet connection
-- Node will auto-discover peers via seed.archivas.ai
+- Test bootnode connectivity: `telnet seed.archivas.ai 9090` or `nc -zv seed.archivas.ai 9090`
+- Once connected to the bootnode, gossip will automatically discover additional peers
 
 ### "Sync stuck"
 
@@ -273,7 +294,7 @@ tail -100 logs/node.log | grep -i error
 
 # Verify genesis hash matches
 curl http://localhost:8080/genesisHash
-# Should be: de7ad6cff236a2aa...
+# Compare with the hash shown in node startup logs
 
 # Restart node
 pkill -f archivas-node
@@ -301,6 +322,7 @@ pkill -f archivas-node
   --p2p :9090 \
   --genesis genesis/devnet.genesis.json \
   --network-id archivas-devnet-v4 \
+  --bootnodes seed.archivas.ai:9090 \
   > logs/node.log 2>&1 &
 ```
 
@@ -312,15 +334,21 @@ pkill -f archivas-node
 
 ### RPC Binding
 
-**Public node (not recommended):**
+**Important:** The default `--rpc :8080` binds to all interfaces (`0.0.0.0:8080`), exposing RPC to the network.
+
+**Public node (not recommended for most users):**
 ```bash
 --rpc 0.0.0.0:8080  # ❌ Exposes to internet
+# or
+--rpc :8080  # Same as above (default)
 ```
 
 **Private node (recommended):**
 ```bash
 --rpc 127.0.0.1:8080  # ✅ Localhost only
 ```
+
+**Why localhost?** Most users only need RPC for local farmers or development. Exposing RPC publicly requires rate limiting, authentication, and security hardening (see production deployment guides).
 
 ### Firewall
 
