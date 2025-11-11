@@ -2,6 +2,8 @@
 
 Step-by-step guide to start farming Archivas.
 
+> **Windows Users:** See [Setting Up a Farmer on Windows](setup-farmer-windows.md) for Windows-specific instructions.
+
 ---
 
 ## Overview
