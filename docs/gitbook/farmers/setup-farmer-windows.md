@@ -327,11 +327,9 @@ Some antivirus software may flag the farmer executable as suspicious.
 ### Faster Plot Scanning
 
 ```powershell
-# Use all CPU cores (PowerShell)
-$cores = (Get-WmiObject Win32_ComputerSystem).NumberOfLogicalProcessors
+# Use fast storage (SSD) for better scanning performance
 .\archivas-farmer.exe farm `
   --plots C:\Users\YourUsername\archivas-plots `
-  --threads $cores `
   --node https://seed.archivas.ai `
   --farmer-privkey YOUR_PRIVKEY
 ```

@@ -273,11 +273,11 @@ ls -lh ~/archivas-plots/
 ### Faster Plot Scanning
 
 ```bash
-# Use all CPU cores
+# Use fast storage (SSD) for better scanning performance
 ./archivas-farmer farm \
   --plots ~/archivas-plots \
-  --threads $(nproc) \
-  ...
+  --node https://seed.archivas.ai \
+  --farmer-privkey YOUR_PRIVKEY
 ```
 
 ### Multiple Plot Directories

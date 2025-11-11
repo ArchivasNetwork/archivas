@@ -217,8 +217,8 @@ What you need to farm Archivas.
 
 ### Faster Plotting
 - Use SSD for temporary plotting directory
-- Use all CPU cores: `--threads $(nproc)`
-- Plot multiple k28s in parallel
+- Plot multiple k28s in parallel (run multiple plot commands simultaneously)
+- More CPU cores = faster individual plot creation
 
 ### Efficient Farming
 - Use HDD for plot storage (cheaper)
