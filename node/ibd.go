@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -156,11 +157,31 @@ func (m *IBDManager) RunIBD(peerURL string) error {
 		blocks, newRemoteTip, err := m.fetchBlockBatch(peerURL, currentHeight+1, m.config.BatchSize)
 		if err != nil {
 			consecutiveFailures++
+			
+			// Use exponential backoff with longer delays for 502/503 errors
+			var retryDelay time.Duration
+			errStr := err.Error()
+			if strings.Contains(errStr, "502") || strings.Contains(errStr, "503") || strings.Contains(errStr, "unavailable") {
+				// Server is overloaded - use longer exponential backoff
+				retryDelay = m.config.RetryDelay * time.Duration(1<<uint(consecutiveFailures-1))
+				if retryDelay > 60*time.Second {
+					retryDelay = 60 * time.Second
+				}
+			} else if strings.Contains(errStr, "timeout") {
+				// Timeout - use moderate backoff
+				retryDelay = m.config.RetryDelay * time.Duration(consecutiveFailures)
+				if retryDelay > 30*time.Second {
+					retryDelay = 30 * time.Second
+				}
+			} else {
+				// Other errors - standard backoff
+				retryDelay = m.config.RetryDelay * time.Duration(consecutiveFailures)
+			}
+			
 			if consecutiveFailures >= m.config.MaxRetries {
 				return fmt.Errorf("IBD failed after %d retries: %w", m.config.MaxRetries, err)
 			}
 
-			retryDelay := m.config.RetryDelay * time.Duration(consecutiveFailures)
 			log.Printf("[IBD] Fetch error (attempt %d/%d): %v, retrying in %v...",
 				consecutiveFailures, m.config.MaxRetries, err, retryDelay)
 			time.Sleep(retryDelay)
@@ -217,11 +238,23 @@ func (m *IBDManager) RunIBD(peerURL string) error {
 // fetchRemoteTip gets current chain tip from peer
 func (m *IBDManager) fetchRemoteTip(peerURL string) (uint64, error) {
 	url := fmt.Sprintf("%s/chainTip", peerURL)
-	resp, err := http.Get(url)
+	
+	// Use longer timeout for remote tip (server may be slow)
+	client := &http.Client{
+		Timeout: 60 * time.Second,
+	}
+	
+	resp, err := client.Get(url)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("connection error: %w", err)
 	}
 	defer resp.Body.Close()
+
+	// Handle 502/503 errors specially (service temporarily unavailable)
+	if resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusServiceUnavailable {
+		body, _ := io.ReadAll(resp.Body)
+		return 0, fmt.Errorf("HTTP %d (server temporarily unavailable): %s", resp.StatusCode, string(body))
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -233,7 +266,7 @@ func (m *IBDManager) fetchRemoteTip(peerURL string) (uint64, error) {
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to decode response: %w", err)
 	}
 
 	height, err := strconv.ParseUint(result.Height, 10, 64)
@@ -248,15 +281,26 @@ func (m *IBDManager) fetchRemoteTip(peerURL string) (uint64, error) {
 func (m *IBDManager) fetchBlockBatch(peerURL string, fromHeight uint64, limit int) ([]json.RawMessage, uint64, error) {
 	url := fmt.Sprintf("%s/blocks/range?from=%d&limit=%d", peerURL, fromHeight, limit)
 
+	// Increase timeout to 120 seconds for large batch requests (server may be slow)
 	client := &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout: 120 * time.Second,
 	}
 
 	resp, err := client.Get(url)
 	if err != nil {
-		return nil, 0, err
+		// Check if it's a timeout error
+		if strings.Contains(err.Error(), "timeout") || strings.Contains(err.Error(), "deadline exceeded") {
+			return nil, 0, fmt.Errorf("request timeout (server may be overloaded): %w", err)
+		}
+		return nil, 0, fmt.Errorf("connection error: %w", err)
 	}
 	defer resp.Body.Close()
+
+	// Handle 502/503 errors specially (service temporarily unavailable)
+	if resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusServiceUnavailable {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, 0, fmt.Errorf("HTTP %d (server temporarily unavailable): %s", resp.StatusCode, string(body))
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -271,7 +315,7 @@ func (m *IBDManager) fetchBlockBatch(peerURL string, fromHeight uint64, limit in
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("failed to decode response: %w", err)
 	}
 
 	if result.Tip == 0 {

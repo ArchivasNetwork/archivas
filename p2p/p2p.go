@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strings"
 	"sync"
 	"time"
 )
@@ -30,23 +31,23 @@ type Network struct {
 	listenAddr  string
 	syncState   *SyncState
 	peerStore   PeerStore
-	
+
 	// Gossip configuration
-	networkID         string
-	enableGossip      bool
-	gossipInterval    time.Duration
-	maxPeers          int
-	dialsPerMinute    int
-	
+	networkID      string
+	enableGossip   bool
+	gossipInterval time.Duration
+	maxPeers       int
+	dialsPerMinute int
+
 	// Dialing state
-	dialing           map[string]bool // addresses currently being dialed
-	knownPeers        map[string]int64 // all known peers with last seen timestamp
-	dialingSem        chan struct{} // rate limiter for new connections
-	
+	dialing    map[string]bool  // addresses currently being dialed
+	knownPeers map[string]int64 // all known peers with last seen timestamp
+	dialingSem chan struct{}    // rate limiter for new connections
+
 	// v1.1.1: IBD state
-	ibdInflight       int           // Number of concurrent IBD streams
-	ibdMaxConcurrent  int           // Max concurrent IBD streams (default: 2)
-	ibdBatchSize      uint32        // Batch size for IBD (default: 512)
+	ibdInflight      int    // Number of concurrent IBD streams
+	ibdMaxConcurrent int    // Max concurrent IBD streams (default: 2)
+	ibdBatchSize     uint32 // Batch size for IBD (default: 512)
 }
 
 // NodeHandler interface for node callbacks
@@ -79,18 +80,18 @@ func NewNetwork(listenAddr string, handler NodeHandler) *Network {
 		listenAddr:  listenAddr,
 		syncState:   NewSyncState(),
 		peerStore:   nil, // Will be set via SetPeerStore
-		
+
 		// Default gossip config
 		networkID:      "archivas-devnet-v3",
 		enableGossip:   true,
 		gossipInterval: 60 * time.Second,
 		maxPeers:       20,
 		dialsPerMinute: 5,
-		
+
 		dialing:    make(map[string]bool),
 		knownPeers: make(map[string]int64),
 		dialingSem: make(chan struct{}, 1),
-		
+
 		// v1.1.1: IBD config
 		ibdInflight:      0,
 		ibdMaxConcurrent: 2,
@@ -102,13 +103,13 @@ func NewNetwork(listenAddr string, handler NodeHandler) *Network {
 func (n *Network) SetGossipConfig(cfg GossipConfig) {
 	n.Lock()
 	defer n.Unlock()
-	
+
 	n.networkID = cfg.NetworkID
 	n.enableGossip = cfg.EnableGossip
 	n.gossipInterval = cfg.Interval
 	n.maxPeers = cfg.MaxPeers
 	n.dialsPerMinute = cfg.DialsPerMinute
-	
+
 	// Create rate limiter
 	if cfg.DialsPerMinute > 0 {
 		n.dialingSem = make(chan struct{}, cfg.DialsPerMinute)
@@ -116,7 +117,7 @@ func (n *Network) SetGossipConfig(cfg GossipConfig) {
 		for i := 0; i < cfg.DialsPerMinute; i++ {
 			n.dialingSem <- struct{}{}
 		}
-		
+
 		// Refill every minute
 		go func() {
 			ticker := time.NewTicker(time.Minute)
@@ -138,7 +139,7 @@ func (n *Network) SetPeerStore(store PeerStore) {
 	n.Lock()
 	defer n.Unlock()
 	n.peerStore = store
-	
+
 	// Auto-dial stored peers
 	if store != nil {
 		go func() {
@@ -150,7 +151,7 @@ func (n *Network) SetPeerStore(store PeerStore) {
 				}
 			}
 		}()
-		
+
 		// Start peer gossip loop
 		go n.peerGossipLoop()
 	}
@@ -160,7 +161,7 @@ func (n *Network) SetPeerStore(store PeerStore) {
 func (n *Network) peerGossipLoop() {
 	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
-	
+
 	for range ticker.C {
 		n.gossipPeers()
 	}
@@ -172,23 +173,23 @@ func (n *Network) gossipPeers() {
 	if n.peerStore == nil {
 		return
 	}
-	
+
 	knownPeers, err := n.peerStore.List()
 	if err != nil || len(knownPeers) == 0 {
 		return
 	}
-	
+
 	// Create gossip message with jitter (±20%)
 	jitterFactor := 0.8 + 0.4*float64(time.Now().UnixNano()%100)/100.0
 	jitter := time.Duration(float64(n.gossipInterval) * jitterFactor)
 	time.Sleep(jitter - n.gossipInterval) // Adjust next tick
-	
+
 	msg := GossipPeersMessage{
 		Addrs:  knownPeers,
 		SeenAt: time.Now().Unix(),
 		NetID:  n.networkID,
 	}
-	
+
 	// Send to all connected peers
 	n.RLock()
 	peers := make([]*Peer, 0, len(n.peers))
@@ -196,13 +197,13 @@ func (n *Network) gossipPeers() {
 		peers = append(peers, peer)
 	}
 	n.RUnlock()
-	
+
 	for _, peer := range peers {
 		if err := n.SendMessage(peer, MsgTypeGossipPeers, msg); err != nil {
 			log.Printf("[p2p] failed to send GOSSIP_PEERS to %s: %v", peer.Address, err)
 		}
 	}
-	
+
 	log.Printf("[p2p] gossiped %d known peers to %d connected peers", len(knownPeers), len(peers))
 }
 
@@ -251,7 +252,7 @@ func (n *Network) ConnectPeer(address string) error {
 	n.Lock()
 	n.peers[address] = peer
 	peerCount := len(n.peers)
-	
+
 	// Persist to peer store
 	if n.peerStore != nil {
 		n.peerStore.Add(address)
@@ -309,10 +310,26 @@ func (n *Network) handlePeer(peer *Peer) {
 		delete(n.peers, peer.Address)
 		peerCount := len(n.peers)
 		n.Unlock()
-		
+
 		// Don't remove from store on disconnect (will retry later)
 		log.Printf("[p2p] peer %s disconnected (remaining peers: %d)", peer.Address, peerCount)
 	}()
+
+	// Peek at first bytes to detect HTTP requests
+	peekBytes, err := peer.Reader.Peek(4)
+	if err == nil && len(peekBytes) >= 4 {
+		// Check if it looks like an HTTP request (GET, POST, HEAD, etc.)
+		firstBytes := string(peekBytes[:4])
+		if firstBytes == "GET " || firstBytes == "POST" || firstBytes == "HEAD" ||
+			firstBytes == "PUT " || firstBytes == "DELE" || firstBytes == "OPTI" ||
+			firstBytes == "PATC" || firstBytes == "HTTP" {
+			// This is an HTTP request, not a P2P message - close connection silently
+			// Read a bit more to consume the request and avoid errors
+			buf := make([]byte, 512)
+			peer.Reader.Read(buf)
+			return
+		}
+	}
 
 	for {
 		// Read message (newline-delimited JSON)
@@ -322,8 +339,24 @@ func (n *Network) handlePeer(peer *Peer) {
 			return
 		}
 
+		// Check if line starts with HTTP method (additional safety check)
+		lineStr := string(line)
+		if len(lineStr) >= 4 && (lineStr[:4] == "GET " || lineStr[:4] == "POST" ||
+			lineStr[:4] == "HEAD" || lineStr[:4] == "HTTP") {
+			// HTTP request detected - close connection
+			return
+		}
+
 		var msg Message
 		if err := json.Unmarshal(line, &msg); err != nil {
+			// Check if error is due to HTTP request
+			errStr := err.Error()
+			if strings.Contains(errStr, "invalid character 'G'") ||
+				strings.Contains(errStr, "invalid character 'H'") ||
+				strings.Contains(errStr, "invalid character 'P'") {
+				// Likely an HTTP request - close connection silently
+				return
+			}
 			log.Printf("[p2p] invalid message from %s: %v", peer.Address, err)
 			continue
 		}
@@ -428,17 +461,17 @@ func (n *Network) handleGossipPeers(peer *Peer, payload json.RawMessage) {
 		log.Printf("[p2p] invalid GOSSIP_PEERS from %s", peer.Address)
 		return
 	}
-	
+
 	// Validate network ID
 	if gossip.NetID != n.networkID {
-		log.Printf("[p2p] ignoring GOSSIP_PEERS from %s: network mismatch (got %s, want %s)", 
+		log.Printf("[p2p] ignoring GOSSIP_PEERS from %s: network mismatch (got %s, want %s)",
 			peer.Address, gossip.NetID, n.networkID)
 		return
 	}
-	
-	log.Printf("[p2p] received GOSSIP_PEERS: addrs=%d from=%s netID=%s", 
+
+	log.Printf("[p2p] received GOSSIP_PEERS: addrs=%d from=%s netID=%s",
 		len(gossip.Addrs), peer.Address, gossip.NetID)
-	
+
 	// Merge into known peers
 	n.Lock()
 	merged := 0
@@ -446,12 +479,12 @@ func (n *Network) handleGossipPeers(peer *Peer, payload json.RawMessage) {
 		if addr == "" || addr == n.listenAddr {
 			continue // Skip self and empty
 		}
-		
+
 		// Dedupe: only add if not already known
 		if _, known := n.knownPeers[addr]; !known {
 			n.knownPeers[addr] = gossip.SeenAt
 			merged++
-			
+
 			// Persist to store
 			if n.peerStore != nil {
 				n.peerStore.Add(addr)
@@ -461,14 +494,14 @@ func (n *Network) handleGossipPeers(peer *Peer, payload json.RawMessage) {
 	currentPeers := len(n.peers)
 	totalKnown := len(n.knownPeers)
 	n.Unlock()
-	
+
 	log.Printf("[p2p] merged %d new addrs (known=%d, connected=%d)", merged, totalKnown, currentPeers)
-	
+
 	// Auto-dial new peers if under max
 	if currentPeers >= n.maxPeers {
 		return
 	}
-	
+
 	// Try connecting to new addresses with rate limiting
 	for _, addr := range gossip.Addrs {
 		n.RLock()
@@ -476,15 +509,15 @@ func (n *Network) handleGossipPeers(peer *Peer, payload json.RawMessage) {
 		_, dialing := n.dialing[addr]
 		peerCount := len(n.peers)
 		n.RUnlock()
-		
+
 		if connected || dialing || addr == n.listenAddr || addr == "" {
 			continue
 		}
-		
+
 		if peerCount >= n.maxPeers {
 			break
 		}
-		
+
 		// Rate limit: acquire dial slot
 		select {
 		case <-n.dialingSem:
@@ -492,14 +525,14 @@ func (n *Network) handleGossipPeers(peer *Peer, payload json.RawMessage) {
 			n.Lock()
 			n.dialing[addr] = true
 			n.Unlock()
-			
+
 			go func(a string) {
 				defer func() {
 					n.Lock()
 					delete(n.dialing, a)
 					n.Unlock()
 				}()
-				
+
 				log.Printf("[p2p] auto-dialing discovered peer: %s", a)
 				n.ConnectPeer(a)
 			}(addr)
@@ -574,16 +607,16 @@ func (n *Network) handleBlockData(peer *Peer, payload json.RawMessage) {
 	}
 
 	log.Printf("[p2p] received BLOCK_DATA height=%d from %s", blockData.Height, peer.Address)
-	
+
 	// Try to apply the block
 	if err := n.nodeHandler.VerifyAndApplyBlock(blockData.BlockJSON); err != nil {
 		log.Printf("[p2p] failed to apply block %d: %v", blockData.Height, err)
-		
+
 		// If block is out of order, queue it and request missing blocks
 		localHeight := n.nodeHandler.LocalHeight()
 		if blockData.Height > localHeight+1 {
 			log.Printf("[p2p] block %d is ahead of us (height=%d), requesting gap blocks", blockData.Height, localHeight)
-			
+
 			// Request missing blocks
 			for h := localHeight + 1; h < blockData.Height; h++ {
 				if !n.nodeHandler.HasBlock(h) && n.syncState.WantBlock(h) {
@@ -591,15 +624,15 @@ func (n *Network) handleBlockData(peer *Peer, payload json.RawMessage) {
 					n.SendMessage(peer, MsgTypeGetBlock, req)
 				}
 			}
-			
+
 			// Queue this block for later
 			n.syncState.QueueBlock(blockData.Height, blockData.BlockJSON)
 		}
 		return
 	}
-	
+
 	n.syncState.GotBlock(blockData.Height)
-	
+
 	// Try to apply any queued blocks that are now sequential
 	for {
 		nextHeight := n.nodeHandler.LocalHeight() + 1
@@ -613,7 +646,7 @@ func (n *Network) handleBlockData(peer *Peer, payload json.RawMessage) {
 			break
 		}
 	}
-	
+
 	// If peer is still ahead, request next block
 	localHeight := n.nodeHandler.LocalHeight()
 	if peer.Height > localHeight {
@@ -659,17 +692,17 @@ func (n *Network) GetPeerCount() int {
 func (n *Network) GetPeerList() (connected []string, known []string) {
 	n.RLock()
 	defer n.RUnlock()
-	
+
 	connected = make([]string, 0, len(n.peers))
 	for addr := range n.peers {
 		connected = append(connected, addr)
 	}
-	
+
 	known = make([]string, 0, len(n.knownPeers))
 	for addr := range n.knownPeers {
 		known = append(known, addr)
 	}
-	
+
 	return connected, known
 }
 
