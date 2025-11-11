@@ -1228,6 +1228,18 @@ func (ns *NodeState) GetBlockByHeight(height uint64) (interface{}, error) {
 		}
 	}
 
+	// Format proof if present (needed for hash calculation during IBD)
+	var proofData interface{} = nil
+	if block.Proof != nil {
+		proofData = map[string]interface{}{
+			"hash":         hex.EncodeToString(block.Proof.Hash[:]),
+			"quality":      block.Proof.Quality,
+			"plotID":       hex.EncodeToString(block.Proof.PlotID[:]),
+			"index":        block.Proof.Index,
+			"farmerPubKey": hex.EncodeToString(block.Proof.FarmerPubKey[:]),
+		}
+	}
+
 	return map[string]interface{}{
 		"height":     block.Height,
 		"hash":       hex.EncodeToString(blockHash[:]),
@@ -1238,5 +1250,6 @@ func (ns *NodeState) GetBlockByHeight(height uint64) (interface{}, error) {
 		"farmerAddr": block.FarmerAddr,
 		"txCount":    len(block.Txs),
 		"txs":        formattedTxs,
+		"proof":      proofData, // Include proof for hash calculation during IBD
 	}, nil
 }
