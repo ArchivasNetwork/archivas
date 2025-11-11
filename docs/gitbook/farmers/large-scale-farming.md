@@ -213,14 +213,13 @@ The farmer can scan multiple directories:
 **Optimization tips:**
 - Use fast storage (SSD) for plots if possible
 - Distribute plots across multiple disks
-- Use `--threads` flag to utilize all CPU cores for scanning
+- The farmer scans plots sequentially - faster disks = faster scanning
 
 ```bash
 ./archivas-farmer farm \
   --plots /mnt/plots \
   --node https://seed.archivas.ai \
-  --farmer-privkey YOUR_PRIVKEY \
-  --threads $(nproc)  # Use all CPU cores
+  --farmer-privkey YOUR_PRIVKEY
 ```
 
 ---
@@ -330,8 +329,8 @@ ulimit -n 100000
 **Solutions:**
 - Use faster storage (SSD)
 - Distribute across multiple disks
-- Use `--threads` flag for parallel scanning
-- Consider k=29 or k=30 for fewer files
+- Consider k=29 or k=30 for fewer files (fewer files = faster scanning)
+- The farmer scans plots sequentially, so faster I/O helps
 
 ### Disk I/O Bottleneck
 
