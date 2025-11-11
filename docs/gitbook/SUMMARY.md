@@ -31,6 +31,7 @@
 * [What is Farming?](farmers/what-is-farming.md)
 * [Hardware Requirements](farmers/hardware-requirements.md)
 * [Setting Up a Farmer](farmers/setup-farmer.md)
+* [Setting Up a Farmer on Windows](farmers/setup-farmer-windows.md)
 * [Creating Plots](farmers/creating-plots.md)
 * [Running a Node](farmers/running-node.md)
 * [Earning & Rewards](farmers/earnings.md)
