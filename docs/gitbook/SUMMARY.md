@@ -33,6 +33,7 @@
 * [Setting Up a Farmer](farmers/setup-farmer.md)
 * [Setting Up a Farmer on Windows](farmers/setup-farmer-windows.md)
 * [Creating Plots](farmers/creating-plots.md)
+* [Large-Scale Farming (10+ TB)](farmers/large-scale-farming.md)
 * [Running a Node](farmers/running-node.md)
 * [Earning & Rewards](farmers/earnings.md)
 * [Troubleshooting](farmers/troubleshooting.md)
