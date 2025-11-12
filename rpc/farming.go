@@ -110,6 +110,7 @@ func (s *FarmingServer) Start(addr string) error {
 	http.HandleFunc("/vdf/update", s.wrapMetrics("/vdf/update", s.handleVDFUpdate))
 
 	// Network endpoints
+	http.HandleFunc("/ping", s.handlePing) // Ultra-lightweight ping (no metrics, no nodeState calls, no locks)
 	http.HandleFunc("/genesisHash", s.wrapMetrics("/genesisHash", s.handleGenesisHash))
 	http.HandleFunc("/healthz", s.wrapMetrics("/healthz", s.handleHealthz))
 	http.HandleFunc("/peers", s.wrapMetrics("/peers", s.handlePeers))
@@ -389,6 +390,19 @@ func (s *FarmingServer) handleGenesisHash(w http.ResponseWriter, r *http.Request
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+// handlePing handles GET /ping - ultra-lightweight endpoint for watchdog
+// Returns immediately without calling nodeState (avoids lock contention)
+func (s *FarmingServer) handlePing(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"status":"ok"}`))
 }
 
 // handleHealthz handles GET /healthz

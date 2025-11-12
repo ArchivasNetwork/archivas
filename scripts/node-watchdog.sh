@@ -18,11 +18,13 @@ log() {
 }
 
 check_rpc() {
-    # Use /healthz endpoint which is lighter than /chainTip
+    # Use /ping endpoint which is ultra-lightweight (no nodeState calls, no locks)
+    # This avoids false positives during heavy load when nodeState might be locked
     # Check both endpoint and process to avoid false positives
     if pgrep -f "archivas-node" > /dev/null 2>&1; then
         # Process is running, check if RPC responds (with increased timeout for heavy load)
-        if curl -s --max-time "$TIMEOUT" "$RPC_URL/healthz" > /dev/null 2>&1; then
+        # Use /ping instead of /healthz to avoid lock contention
+        if curl -s --max-time "$TIMEOUT" "$RPC_URL/ping" > /dev/null 2>&1; then
             return 0  # Healthy
         else
             return 1  # RPC unresponsive but process running
@@ -32,7 +34,7 @@ check_rpc() {
     fi
 }
 
-log "Starting watchdog for $SERVICE_NAME (checking $RPC_URL/healthz every ${CHECK_INTERVAL}s, timeout ${TIMEOUT}s, max failures ${MAX_FAILURES})"
+log "Starting watchdog for $SERVICE_NAME (checking $RPC_URL/ping every ${CHECK_INTERVAL}s, timeout ${TIMEOUT}s, max failures ${MAX_FAILURES})"
 
 consecutive_failures=0
 max_failures="${MAX_FAILURES}"
