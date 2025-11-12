@@ -1165,7 +1165,40 @@ func (s *FarmingServer) handleTxRecent(w http.ResponseWriter, r *http.Request) {
 		blocksToScan = 100
 	}
 
-	blocksRaw := s.nodeState.GetRecentBlocks(blocksToScan)
+	// Use cached blocks to avoid lock contention
+	var blocksRaw interface{}
+	
+	// Try to use cache for common sizes (prefer 100 blocks for tx extraction)
+	s.recentBlocksCache.RLock()
+	lastUpdate := s.recentBlocksCache.lastUpdate
+	cached100 := s.recentBlocksCache.blocks100
+	cached50 := s.recentBlocksCache.blocks50
+	cached20 := s.recentBlocksCache.blocks20
+	s.recentBlocksCache.RUnlock()
+
+	// If cache hasn't been initialized yet, refresh it synchronously
+	if lastUpdate.IsZero() {
+		s.refreshRecentBlocksCache()
+		s.recentBlocksCache.RLock()
+		cached100 = s.recentBlocksCache.blocks100
+		cached50 = s.recentBlocksCache.blocks50
+		cached20 = s.recentBlocksCache.blocks20
+		s.recentBlocksCache.RUnlock()
+	}
+
+	// Use cached 100 blocks if available (contains most transactions)
+	// Fall back to cached 50 or 20 if needed, or direct call for edge cases
+	if cached100 != nil && blocksToScan >= 50 {
+		blocksRaw = cached100
+	} else if cached50 != nil && blocksToScan >= 20 {
+		blocksRaw = cached50
+	} else if cached20 != nil && blocksToScan >= 10 {
+		blocksRaw = cached20
+	} else {
+		// For small requests or if cache not ready, call directly (should be rare)
+		blocksRaw = s.nodeState.GetRecentBlocks(blocksToScan)
+	}
+	
 	blocks, ok := blocksRaw.([]map[string]interface{})
 	if !ok {
 		http.Error(w, "Internal error retrieving blocks", http.StatusInternalServerError)
