@@ -15,7 +15,8 @@ RestartSec=30
 # Environment
 Environment="RPC_URL=http://127.0.0.1:8080"
 Environment="CHECK_INTERVAL=60"
-Environment="TIMEOUT=5"
+Environment="TIMEOUT=30"
+Environment="MAX_FAILURES=5"
 Environment="SERVICE_NAME=archivas-node"
 
 StandardOutput=journal
