@@ -49,8 +49,10 @@ echo ""
 # Create directories
 echo "4️⃣  Creating directories..."
 mkdir -p "$DATA_DIR"
-mkdir -p "$LOG_DIR"
+sudo mkdir -p "$LOG_DIR"
+sudo chown $USER:$USER "$LOG_DIR"
 sudo mkdir -p /var/www/seed2
+sudo chown $USER:$USER /var/www/seed2
 echo "   ✅ Directories created"
 echo ""
 
