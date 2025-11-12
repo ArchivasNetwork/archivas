@@ -115,6 +115,9 @@ func (s *FarmingServer) Start(addr string) error {
 	http.HandleFunc("/healthz", s.wrapMetrics("/healthz", s.handleHealthz))
 	http.HandleFunc("/peers", s.wrapMetrics("/peers", s.handlePeers))
 	http.HandleFunc("/health", s.wrapMetrics("/health", s.handleHealthDetailed))
+	
+	// Account endpoints
+	http.HandleFunc("/accounts", s.wrapMetrics("/accounts", s.handleAllAccounts))
 
 	// Faucet endpoint (if enabled)
 	if s.faucetEnabled {
@@ -446,6 +449,35 @@ func (s *FarmingServer) handlePeers(w http.ResponseWriter, r *http.Request) {
 	}{
 		Connected: connected,
 		Known:     known,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleAllAccounts handles GET /accounts - returns all addresses with balances
+func (s *FarmingServer) handleAllAccounts(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get all accounts with non-zero balances
+	accounts := s.worldState.GetAllAccountsWithBalance()
+
+	// Convert to response format
+	accountList := make([]map[string]interface{}, 0, len(accounts))
+	for addr, acct := range accounts {
+		accountList = append(accountList, map[string]interface{}{
+			"address": addr,
+			"balance": acct.Balance,
+			"nonce":   acct.Nonce,
+		})
+	}
+
+	response := map[string]interface{}{
+		"count":    len(accountList),
+		"accounts": accountList,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

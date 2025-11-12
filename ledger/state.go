@@ -43,3 +43,14 @@ func (ws *WorldState) GetNonce(addr string) uint64 {
 	return acct.Nonce
 }
 
+// GetAllAccountsWithBalance returns all addresses that have a non-zero balance
+func (ws *WorldState) GetAllAccountsWithBalance() map[string]*AccountState {
+	result := make(map[string]*AccountState)
+	for addr, acct := range ws.Accounts {
+		if acct.Balance > 0 {
+			result[addr] = acct
+		}
+	}
+	return result
+}
+
