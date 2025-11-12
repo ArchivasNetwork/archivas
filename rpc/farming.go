@@ -325,11 +325,11 @@ func (s *FarmingServer) handleRoot(w http.ResponseWriter, r *http.Request) {
 // updateChainTipCache updates the cached chain tip status periodically
 // This avoids lock contention when many /chainTip requests come in
 func (s *FarmingServer) updateChainTipCache() {
+	// Initial update immediately (don't wait for first tick)
+	s.refreshChainTipCache()
+	
 	ticker := time.NewTicker(1 * time.Second) // Update every second
 	defer ticker.Stop()
-
-	// Initial update
-	s.refreshChainTipCache()
 
 	for range ticker.C {
 		s.refreshChainTipCache()
@@ -360,7 +360,19 @@ func (s *FarmingServer) handleChainTip(w http.ResponseWriter, r *http.Request) {
 	height := s.chainTipCache.height
 	difficulty := s.chainTipCache.difficulty
 	tipHash := s.chainTipCache.tipHash
+	lastUpdate := s.chainTipCache.lastUpdate
 	s.chainTipCache.RUnlock()
+
+	// If cache hasn't been initialized yet (zero time), refresh it synchronously
+	// This handles the case where requests come in before the background goroutine starts
+	if lastUpdate.IsZero() {
+		s.refreshChainTipCache()
+		s.chainTipCache.RLock()
+		height = s.chainTipCache.height
+		difficulty = s.chainTipCache.difficulty
+		tipHash = s.chainTipCache.tipHash
+		s.chainTipCache.RUnlock()
+	}
 
 	// v1.1.0: Match exact spec format
 	response := struct {
