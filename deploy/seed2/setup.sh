@@ -129,7 +129,7 @@ sudo tee /etc/nginx/sites-available/$DOMAIN >/dev/null <<EOF
 # Nginx configuration for $DOMAIN
 # Reverse proxy to Archivas node RPC (localhost:8080)
 
-# HTTP server - redirect to HTTPS + ACME challenge
+# HTTP server - serve content initially (certbot will add HTTPS)
 server {
   listen 80;
   listen [::]:80;
@@ -139,26 +139,6 @@ server {
   location /.well-known/acme-challenge/ {
     root /var/www/seed2;
   }
-
-  # Redirect all other traffic to HTTPS
-  location / {
-    return 301 https://\$host\$request_uri;
-  }
-}
-
-# HTTPS server - reverse proxy to node RPC
-server {
-  listen 443 ssl http2;
-  listen [::]:443 ssl http2;
-  server_name $DOMAIN;
-
-  # TLS certificates (managed by certbot)
-  # These will be added by certbot
-  # ssl_certificate     /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
-  # ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
-  ssl_protocols TLSv1.2 TLSv1.3;
-  ssl_prefer_server_ciphers on;
-  ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384';
 
   # Security headers
   add_header X-Content-Type-Options nosniff always;
