@@ -70,6 +70,20 @@ type FarmingServer struct {
 		blocks100  interface{} // Cached blocks for count=100
 		lastUpdate time.Time
 	}
+
+	// Cached challenge data to avoid lock contention on /challenge endpoint
+	// Farmers call this frequently, so caching prevents lock contention
+	challengeCache struct {
+		sync.RWMutex
+		challenge   [32]byte
+		difficulty  uint64
+		height      uint64
+		vdfSeed     []byte
+		vdfIterations uint64
+		vdfOutput   []byte
+		hasVDF      bool
+		lastUpdate  time.Time
+	}
 }
 
 type metricsTarget struct {
@@ -118,6 +132,7 @@ func (s *FarmingServer) Start(addr string) error {
 	// Start background goroutines to update caches
 	go s.updateChainTipCache()
 	go s.updateRecentBlocksCache()
+	go s.updateChallengeCache()
 
 	// Original endpoints
 	http.HandleFunc("/balance/", s.wrapMetrics("/balance", s.handleBalance))
@@ -227,14 +242,86 @@ func (s *FarmingServer) wrapMetrics(endpoint string, handler http.HandlerFunc) h
 
 // Types moved to rpc/types.go to avoid duplication
 
+// updateChallengeCache updates the cached challenge data periodically
+// This avoids lock contention when many farmers call /challenge simultaneously
+func (s *FarmingServer) updateChallengeCache() {
+	// Initial update immediately (don't wait for first tick)
+	s.refreshChallengeCache()
+	
+	ticker := time.NewTicker(1 * time.Second) // Update every second (challenge changes with blocks)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		s.refreshChallengeCache()
+	}
+}
+
+// refreshChallengeCache refreshes the challenge cache by calling GetCurrentChallenge and GetCurrentVDF
+func (s *FarmingServer) refreshChallengeCache() {
+	challenge, difficulty, height := s.nodeState.GetCurrentChallenge()
+	seed, iterations, output, hasVDF := s.nodeState.GetCurrentVDF()
+	
+	s.challengeCache.Lock()
+	s.challengeCache.challenge = challenge
+	s.challengeCache.difficulty = difficulty
+	s.challengeCache.height = height
+	s.challengeCache.vdfSeed = seed
+	s.challengeCache.vdfIterations = iterations
+	s.challengeCache.vdfOutput = output
+	s.challengeCache.hasVDF = hasVDF
+	s.challengeCache.lastUpdate = time.Now()
+	s.challengeCache.Unlock()
+}
+
 // handleGetChallenge handles GET /challenge
+// Uses cached challenge data to avoid lock contention under high load
 func (s *FarmingServer) handleGetChallenge(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	challenge, difficulty, height := s.nodeState.GetCurrentChallenge()
+	// Read from cache (no lock contention, fast read)
+	s.challengeCache.RLock()
+	challenge := s.challengeCache.challenge
+	difficulty := s.challengeCache.difficulty
+	height := s.challengeCache.height
+	// Copy slice data to avoid issues if cache is updated while we're using it
+	var vdfSeed, vdfOutput []byte
+	if len(s.challengeCache.vdfSeed) > 0 {
+		vdfSeed = make([]byte, len(s.challengeCache.vdfSeed))
+		copy(vdfSeed, s.challengeCache.vdfSeed)
+	}
+	if len(s.challengeCache.vdfOutput) > 0 {
+		vdfOutput = make([]byte, len(s.challengeCache.vdfOutput))
+		copy(vdfOutput, s.challengeCache.vdfOutput)
+	}
+	vdfIterations := s.challengeCache.vdfIterations
+	hasVDF := s.challengeCache.hasVDF
+	lastUpdate := s.challengeCache.lastUpdate
+	s.challengeCache.RUnlock()
+
+	// If cache hasn't been initialized yet (zero time), refresh it synchronously
+	// This handles the case where requests come in before the background goroutine starts
+	if lastUpdate.IsZero() {
+		s.refreshChallengeCache()
+		s.challengeCache.RLock()
+		challenge = s.challengeCache.challenge
+		difficulty = s.challengeCache.difficulty
+		height = s.challengeCache.height
+		// Copy slice data again after refresh
+		if len(s.challengeCache.vdfSeed) > 0 {
+			vdfSeed = make([]byte, len(s.challengeCache.vdfSeed))
+			copy(vdfSeed, s.challengeCache.vdfSeed)
+		}
+		if len(s.challengeCache.vdfOutput) > 0 {
+			vdfOutput = make([]byte, len(s.challengeCache.vdfOutput))
+			copy(vdfOutput, s.challengeCache.vdfOutput)
+		}
+		vdfIterations = s.challengeCache.vdfIterations
+		hasVDF = s.challengeCache.hasVDF
+		s.challengeCache.RUnlock()
+	}
 
 	response := ChallengeResponse{
 		Challenge:  challenge,
@@ -243,11 +330,11 @@ func (s *FarmingServer) handleGetChallenge(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Include VDF info if available (for PoSpace+Time farming)
-	if seed, iterations, output, hasVDF := s.nodeState.GetCurrentVDF(); hasVDF {
+	if hasVDF {
 		response.VDF = &VDFInfo{
-			Seed:       hex.EncodeToString(seed),
-			Iterations: iterations,
-			Output:     hex.EncodeToString(output),
+			Seed:       hex.EncodeToString(vdfSeed),
+			Iterations: vdfIterations,
+			Output:     hex.EncodeToString(vdfOutput),
 		}
 	}
 
