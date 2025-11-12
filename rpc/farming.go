@@ -60,6 +60,16 @@ type FarmingServer struct {
 		tipHash    [32]byte
 		lastUpdate time.Time
 	}
+
+	// Cached recent blocks to avoid lock contention on /recentBlocks endpoint
+	recentBlocksCache struct {
+		sync.RWMutex
+		blocks10   interface{} // Cached blocks for count=10
+		blocks20   interface{} // Cached blocks for count=20
+		blocks50   interface{} // Cached blocks for count=50
+		blocks100  interface{} // Cached blocks for count=100
+		lastUpdate time.Time
+	}
 }
 
 type metricsTarget struct {
@@ -105,8 +115,9 @@ func (s *FarmingServer) EnableFaucet(privKeyHex string) error {
 func (s *FarmingServer) Start(addr string) error {
 	s.listenAddr = addr
 
-	// Start background goroutine to update chain tip cache
+	// Start background goroutines to update caches
 	go s.updateChainTipCache()
+	go s.updateRecentBlocksCache()
 
 	// Original endpoints
 	http.HandleFunc("/balance/", s.wrapMetrics("/balance", s.handleBalance))
@@ -660,7 +671,39 @@ func (s *FarmingServer) handleFaucet(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+// updateRecentBlocksCache updates the cached recent blocks periodically
+// This avoids lock contention when many /recentBlocks requests come in
+func (s *FarmingServer) updateRecentBlocksCache() {
+	// Initial update immediately (don't wait for first tick)
+	s.refreshRecentBlocksCache()
+	
+	ticker := time.NewTicker(2 * time.Second) // Update every 2 seconds (blocks change less frequently)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		s.refreshRecentBlocksCache()
+	}
+}
+
+// refreshRecentBlocksCache refreshes the recent blocks cache by calling GetRecentBlocks
+func (s *FarmingServer) refreshRecentBlocksCache() {
+	// Cache common sizes: 10, 20, 50, 100
+	blocks10 := s.nodeState.GetRecentBlocks(10)
+	blocks20 := s.nodeState.GetRecentBlocks(20)
+	blocks50 := s.nodeState.GetRecentBlocks(50)
+	blocks100 := s.nodeState.GetRecentBlocks(100)
+	
+	s.recentBlocksCache.Lock()
+	s.recentBlocksCache.blocks10 = blocks10
+	s.recentBlocksCache.blocks20 = blocks20
+	s.recentBlocksCache.blocks50 = blocks50
+	s.recentBlocksCache.blocks100 = blocks100
+	s.recentBlocksCache.lastUpdate = time.Now()
+	s.recentBlocksCache.Unlock()
+}
+
 // handleRecentBlocks handles GET /recentBlocks?count=10
+// Uses cached blocks for common sizes to avoid lock contention
 func (s *FarmingServer) handleRecentBlocks(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -676,7 +719,42 @@ func (s *FarmingServer) handleRecentBlocks(w http.ResponseWriter, r *http.Reques
 		count = 100 // Max 100
 	}
 
-	blocks := s.nodeState.GetRecentBlocks(count)
+	var blocks interface{}
+	
+	// Try to use cache for common sizes
+	s.recentBlocksCache.RLock()
+	lastUpdate := s.recentBlocksCache.lastUpdate
+	cached10 := s.recentBlocksCache.blocks10
+	cached20 := s.recentBlocksCache.blocks20
+	cached50 := s.recentBlocksCache.blocks50
+	cached100 := s.recentBlocksCache.blocks100
+	s.recentBlocksCache.RUnlock()
+
+	// If cache hasn't been initialized yet, refresh it synchronously
+	if lastUpdate.IsZero() {
+		s.refreshRecentBlocksCache()
+		s.recentBlocksCache.RLock()
+		cached10 = s.recentBlocksCache.blocks10
+		cached20 = s.recentBlocksCache.blocks20
+		cached50 = s.recentBlocksCache.blocks50
+		cached100 = s.recentBlocksCache.blocks100
+		s.recentBlocksCache.RUnlock()
+	}
+
+	// Use cached blocks for common sizes, fall back to direct call for others
+	switch count {
+	case 10:
+		blocks = cached10
+	case 20:
+		blocks = cached20
+	case 50:
+		blocks = cached50
+	case 100:
+		blocks = cached100
+	default:
+		// For non-standard sizes, call directly (less common, acceptable)
+		blocks = s.nodeState.GetRecentBlocks(count)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -823,8 +901,44 @@ func (s *FarmingServer) handleBlocksRecent(w http.ResponseWriter, r *http.Reques
 		limit = 1
 	}
 
-	// Get recent blocks from node state
-	blocksRaw := s.nodeState.GetRecentBlocks(limit)
+	// Get recent blocks from node state (use cache for common sizes)
+	var blocksRaw interface{}
+	
+	// Try to use cache for common sizes
+	s.recentBlocksCache.RLock()
+	lastUpdate := s.recentBlocksCache.lastUpdate
+	cached10 := s.recentBlocksCache.blocks10
+	cached20 := s.recentBlocksCache.blocks20
+	cached50 := s.recentBlocksCache.blocks50
+	cached100 := s.recentBlocksCache.blocks100
+	s.recentBlocksCache.RUnlock()
+
+	// If cache hasn't been initialized yet, refresh it synchronously
+	if lastUpdate.IsZero() {
+		s.refreshRecentBlocksCache()
+		s.recentBlocksCache.RLock()
+		cached10 = s.recentBlocksCache.blocks10
+		cached20 = s.recentBlocksCache.blocks20
+		cached50 = s.recentBlocksCache.blocks50
+		cached100 = s.recentBlocksCache.blocks100
+		s.recentBlocksCache.RUnlock()
+	}
+
+	// Use cached blocks for common sizes, fall back to direct call for others
+	switch limit {
+	case 10:
+		blocksRaw = cached10
+	case 20:
+		blocksRaw = cached20
+	case 50:
+		blocksRaw = cached50
+	case 100:
+		blocksRaw = cached100
+	default:
+		// For non-standard sizes, call directly (less common, acceptable)
+		blocksRaw = s.nodeState.GetRecentBlocks(limit)
+	}
+	
 	blocks, ok := blocksRaw.([]map[string]interface{})
 	if !ok {
 		http.Error(w, "Internal error retrieving blocks", http.StatusInternalServerError)
