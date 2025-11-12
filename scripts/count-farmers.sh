@@ -7,7 +7,16 @@
 RPC_URL="${RPC_URL:-http://127.0.0.1:8080}"
 
 # Get current chain height
-CURRENT_HEIGHT=$(curl -s "$RPC_URL/healthz" | jq -r '.height')
+HEALTHZ_RESPONSE=$(curl -s "$RPC_URL/healthz")
+CURRENT_HEIGHT=$(echo "$HEALTHZ_RESPONSE" | jq -r '.height' | tr -d '"' | head -1)
+
+# Validate height
+if [ -z "$CURRENT_HEIGHT" ] || [ "$CURRENT_HEIGHT" = "null" ] || ! [[ "$CURRENT_HEIGHT" =~ ^[0-9]+$ ]]; then
+    echo "Error: Could not get current chain height from $RPC_URL/healthz"
+    echo "Response: $HEALTHZ_RESPONSE"
+    exit 1
+fi
+
 echo "Current chain height: $CURRENT_HEIGHT"
 echo ""
 
@@ -34,7 +43,7 @@ while [ $HEIGHT -le $CURRENT_HEIGHT ]; do
         BATCH_SIZE=$((CURRENT_HEIGHT - HEIGHT + 1))
     fi
     
-    if [ $BATCH_SIZE -le 0 ]; then
+    if [ "$BATCH_SIZE" -le 0 ]; then
         break
     fi
     
