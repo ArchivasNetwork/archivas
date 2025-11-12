@@ -552,7 +552,6 @@ func (ns *NodeState) AcceptBlock(proof *pospace.Proof, farmerAddr string, farmer
 	metrics.IncSubmitReceived()
 
 	ns.Lock()
-	defer ns.Unlock()
 
 	// Get expected height
 	nextHeight := ns.CurrentHeight + 1
@@ -563,6 +562,7 @@ func (ns *NodeState) AcceptBlock(proof *pospace.Proof, farmerAddr string, farmer
 	// for a slightly older challenge
 	if err := ns.Consensus.VerifyProofOfSpace(proof, proof.Challenge); err != nil {
 		metrics.IncSubmitIgnored()
+		ns.Unlock()
 		return fmt.Errorf("invalid proof: %w", err)
 	}
 
@@ -649,36 +649,65 @@ func (ns *NodeState) AcceptBlock(proof *pospace.Proof, farmerAddr string, farmer
 		log.Printf("[difficulty] Dropping difficulty: %d → %d", oldDiff, ns.Consensus.DifficultyTarget)
 	}
 
-	// PERSIST TO DISK
-	log.Println("[storage] Persisting block and state...")
-
-	// Save block
-	if err := ns.BlockStore.SaveBlock(nextHeight, newBlock); err != nil {
-		log.Printf("⚠️  Failed to persist block: %v", err)
+	// Copy data needed for persistence before releasing lock
+	// Track modified accounts (coinbase receiver + all transaction participants)
+	modifiedAccounts := make(map[string]*ledger.AccountState)
+	modifiedAccounts[farmerAddr] = &ledger.AccountState{
+		Balance: receiver.Balance,
+		Nonce:   receiver.Nonce,
 	}
-
-	// Save all modified accounts
-	for addr, acct := range ns.WorldState.Accounts {
-		if err := ns.StateStore.SaveAccount(addr, acct.Balance, acct.Nonce); err != nil {
-			log.Printf("⚠️  Failed to persist account %s: %v", addr, err)
+	for _, tx := range validTxs {
+		if sender, ok := ns.WorldState.Accounts[tx.From]; ok {
+			modifiedAccounts[tx.From] = &ledger.AccountState{
+				Balance: sender.Balance,
+				Nonce:   sender.Nonce,
+			}
+		}
+		if recv, ok := ns.WorldState.Accounts[tx.To]; ok {
+			modifiedAccounts[tx.To] = &ledger.AccountState{
+				Balance: recv.Balance,
+				Nonce:   recv.Nonce,
+			}
 		}
 	}
+	currentDifficulty := ns.Consensus.DifficultyTarget
 
-	// Save metadata
-	if err := ns.MetaStore.SaveTipHeight(nextHeight); err != nil {
-		log.Printf("⚠️  Failed to persist tip height: %v", err)
-	}
-	if err := ns.MetaStore.SaveDifficulty(ns.Consensus.DifficultyTarget); err != nil {
-		log.Printf("⚠️  Failed to persist difficulty: %v", err)
-	}
+	// Release lock BEFORE disk I/O to prevent blocking other requests
+	ns.Unlock()
+
+	// PERSIST TO DISK in background (non-blocking)
+	go func() {
+		log.Println("[storage] Persisting block and state...")
+
+		// Save block
+		if err := ns.BlockStore.SaveBlock(nextHeight, newBlock); err != nil {
+			log.Printf("⚠️  Failed to persist block: %v", err)
+		}
+
+		// Save only modified accounts (not all accounts - much faster!)
+		for addr, acct := range modifiedAccounts {
+			if err := ns.StateStore.SaveAccount(addr, acct.Balance, acct.Nonce); err != nil {
+				log.Printf("⚠️  Failed to persist account %s: %v", addr, err)
+			}
+		}
+
+		// Save metadata
+		if err := ns.MetaStore.SaveTipHeight(nextHeight); err != nil {
+			log.Printf("⚠️  Failed to persist tip height: %v", err)
+		}
+		if err := ns.MetaStore.SaveDifficulty(currentDifficulty); err != nil {
+			log.Printf("⚠️  Failed to persist difficulty: %v", err)
+		}
+
+		log.Println("[storage] ✅ State persisted to disk")
+	}()
 
 	fmt.Printf("✅ Accepted block %d from farmer %s (reward: %.8f %s, txs: %d)\n",
 		nextHeight, farmerAddr, float64(config.InitialBlockReward)/100000000.0, config.DenomSymbol, len(validTxs))
 	fmt.Printf("🔍 New challenge for height %d: %x\n", nextHeight+1, ns.CurrentChallenge[:8])
-	fmt.Printf("⚙️  Difficulty adjusted to: %d\n", ns.Consensus.DifficultyTarget)
-	log.Println("[storage] ✅ State persisted to disk")
+	fmt.Printf("⚙️  Difficulty adjusted to: %d\n", currentDifficulty)
 
-	// Gossip new block to peers
+	// Gossip new block to peers (non-blocking, already outside lock)
 	if ns.P2P != nil {
 		ns.P2P.BroadcastNewBlock(nextHeight, newBlockHash)
 	}
