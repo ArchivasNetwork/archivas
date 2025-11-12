@@ -9,19 +9,21 @@ echo "Fetching all accounts with balances from $RPC_URL..."
 echo ""
 
 # Get accounts
-RESPONSE=$(curl -s "$RPC_URL/accounts")
+RESPONSE=$(curl -s -w "\n%{http_code}" "$RPC_URL/accounts")
+HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+RESPONSE_BODY=$(echo "$RESPONSE" | head -n -1)
 
 # Check if request succeeded
-if [ $? -ne 0 ] || [ -z "$RESPONSE" ]; then
-    echo "Error: Failed to fetch accounts from $RPC_URL"
+if [ -z "$RESPONSE_BODY" ] || [ "$HTTP_CODE" != "200" ]; then
+    if [ "$HTTP_CODE" = "404" ]; then
+        echo "Error: /accounts endpoint not available. Make sure node is running latest code."
+    else
+        echo "Error: Failed to fetch accounts from $RPC_URL (HTTP $HTTP_CODE)"
+    fi
     exit 1
 fi
 
-# Check if endpoint exists (might return 404)
-if echo "$RESPONSE" | grep -q "404\|Not Found"; then
-    echo "Error: /accounts endpoint not available. Make sure node is running latest code."
-    exit 1
-fi
+RESPONSE="$RESPONSE_BODY"
 
 # Extract count
 COUNT=$(echo "$RESPONSE" | jq -r '.count // 0')
