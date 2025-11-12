@@ -51,6 +51,15 @@ type FarmingServer struct {
 	faucetLimit   map[string]time.Time // IP -> last drip time
 	faucetMutex   sync.Mutex
 	listenAddr    string
+
+	// Cached chain tip status to avoid lock contention on /chainTip endpoint
+	chainTipCache struct {
+		sync.RWMutex
+		height     uint64
+		difficulty uint64
+		tipHash    [32]byte
+		lastUpdate time.Time
+	}
 }
 
 type metricsTarget struct {
@@ -95,6 +104,9 @@ func (s *FarmingServer) EnableFaucet(privKeyHex string) error {
 // Start starts the farming RPC server
 func (s *FarmingServer) Start(addr string) error {
 	s.listenAddr = addr
+
+	// Start background goroutine to update chain tip cache
+	go s.updateChainTipCache()
 
 	// Original endpoints
 	http.HandleFunc("/balance/", s.wrapMetrics("/balance", s.handleBalance))
@@ -310,14 +322,45 @@ func (s *FarmingServer) handleRoot(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `{"status":"ok","message":"Archivas Devnet RPC Server (Farming Enabled)"}`)
 }
 
+// updateChainTipCache updates the cached chain tip status periodically
+// This avoids lock contention when many /chainTip requests come in
+func (s *FarmingServer) updateChainTipCache() {
+	ticker := time.NewTicker(1 * time.Second) // Update every second
+	defer ticker.Stop()
+
+	// Initial update
+	s.refreshChainTipCache()
+
+	for range ticker.C {
+		s.refreshChainTipCache()
+	}
+}
+
+// refreshChainTipCache refreshes the chain tip cache by calling GetStatus
+func (s *FarmingServer) refreshChainTipCache() {
+	height, difficulty, tipHash := s.nodeState.GetStatus()
+	s.chainTipCache.Lock()
+	s.chainTipCache.height = height
+	s.chainTipCache.difficulty = difficulty
+	s.chainTipCache.tipHash = tipHash
+	s.chainTipCache.lastUpdate = time.Now()
+	s.chainTipCache.Unlock()
+}
+
 // handleChainTip handles GET /chainTip (for timelord)
+// Uses cached status to avoid lock contention under high load
 func (s *FarmingServer) handleChainTip(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	height, difficulty, tipHash := s.nodeState.GetStatus()
+	// Read from cache (no lock contention, fast read)
+	s.chainTipCache.RLock()
+	height := s.chainTipCache.height
+	difficulty := s.chainTipCache.difficulty
+	tipHash := s.chainTipCache.tipHash
+	s.chainTipCache.RUnlock()
 
 	// v1.1.0: Match exact spec format
 	response := struct {
