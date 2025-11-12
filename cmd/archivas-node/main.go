@@ -69,6 +69,8 @@ type NodeState struct {
 	VDFIterations uint64
 	VDFOutput     []byte
 	HasVDF        bool
+	// Backpressure for disk persistence (limit concurrent writes)
+	persistSem chan struct{}
 }
 
 func main() {
@@ -356,6 +358,7 @@ func main() {
 		ReorgDetector:    consensus.NewReorgDetector(),
 		GenesisHash:      genesisHash,
 		NetworkID:        *networkID,
+		persistSem:       make(chan struct{}, 5), // Limit to 5 concurrent disk writes
 	}
 
 	metrics.StartWatchdogs(metrics.GroupNode)
@@ -675,13 +678,18 @@ func (ns *NodeState) AcceptBlock(proof *pospace.Proof, farmerAddr string, farmer
 	// Release lock BEFORE disk I/O to prevent blocking other requests
 	ns.Unlock()
 
-	// PERSIST TO DISK in background (non-blocking)
+	// PERSIST TO DISK in background with backpressure (prevents goroutine accumulation)
 	go func() {
+		// Acquire semaphore slot (blocks if too many concurrent writes)
+		ns.persistSem <- struct{}{}
+		defer func() { <-ns.persistSem }() // Release slot when done
+
 		log.Println("[storage] Persisting block and state...")
 
 		// Save block
 		if err := ns.BlockStore.SaveBlock(nextHeight, newBlock); err != nil {
 			log.Printf("⚠️  Failed to persist block: %v", err)
+			return // Early exit on block save failure
 		}
 
 		// Save only modified accounts (not all accounts - much faster!)

@@ -25,7 +25,7 @@ check_rpc() {
         # Process is running, check if RPC responds (with increased timeout for heavy load)
         # Use /ping instead of /healthz to avoid lock contention
         if curl -s --max-time "$TIMEOUT" "$RPC_URL/ping" > /dev/null 2>&1; then
-            return 0  # Healthy
+        return 0  # Healthy
         else
             return 1  # RPC unresponsive but process running
         fi

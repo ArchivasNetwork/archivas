@@ -1,0 +1,50 @@
+[Unit]
+Description=Archivas Node (Stable with Resource Limits)
+Documentation=https://github.com/ArchivasNetwork/archivas
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/archivas
+ExecStart=/usr/local/bin/archivas-node \
+  --rpc 127.0.0.1:8080 \
+  --p2p :9090 \
+  --genesis /home/ubuntu/archivas/genesis/devnet.genesis.json \
+  --network-id archivas-devnet-v4
+
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/archivas/archivas-node.log
+StandardError=append:/var/log/archivas/archivas-node.log
+
+# Resource Limits (CRITICAL for stability)
+# Memory limit: 4GB hard limit, 3GB soft limit
+MemoryMax=4G
+MemoryHigh=3G
+# CPU: Allow using all cores but with lower priority
+CPUWeight=100
+Nice=5
+
+# File descriptor limits
+LimitNOFILE=65535
+# Max processes (prevent fork bombs)
+LimitNPROC=512
+
+# Task accounting (prevents runaway goroutines)
+TasksMax=2048
+
+# Restart strategy
+StartLimitInterval=300
+StartLimitBurst=5
+
+# Environment
+Environment="GOMAXPROCS=4"
+Environment="GOGC=50"
+
+# OOM behavior: restart if killed by OOM
+OOMPolicy=continue
+OOMScoreAdjust=500
+
+[Install]
+WantedBy=multi-user.target
+
