@@ -684,28 +684,28 @@ func (ns *NodeState) AcceptBlock(proof *pospace.Proof, farmerAddr string, farmer
 		ns.persistSem <- struct{}{}
 		defer func() { <-ns.persistSem }() // Release slot when done
 
-		log.Println("[storage] Persisting block and state...")
+	log.Println("[storage] Persisting block and state...")
 
-		// Save block
-		if err := ns.BlockStore.SaveBlock(nextHeight, newBlock); err != nil {
-			log.Printf("⚠️  Failed to persist block: %v", err)
+	// Save block
+	if err := ns.BlockStore.SaveBlock(nextHeight, newBlock); err != nil {
+		log.Printf("⚠️  Failed to persist block: %v", err)
 			return // Early exit on block save failure
-		}
+	}
 
 		// Save only modified accounts (not all accounts - much faster!)
 		for addr, acct := range modifiedAccounts {
-			if err := ns.StateStore.SaveAccount(addr, acct.Balance, acct.Nonce); err != nil {
-				log.Printf("⚠️  Failed to persist account %s: %v", addr, err)
-			}
+		if err := ns.StateStore.SaveAccount(addr, acct.Balance, acct.Nonce); err != nil {
+			log.Printf("⚠️  Failed to persist account %s: %v", addr, err)
 		}
+	}
 
-		// Save metadata
-		if err := ns.MetaStore.SaveTipHeight(nextHeight); err != nil {
-			log.Printf("⚠️  Failed to persist tip height: %v", err)
-		}
+	// Save metadata
+	if err := ns.MetaStore.SaveTipHeight(nextHeight); err != nil {
+		log.Printf("⚠️  Failed to persist tip height: %v", err)
+	}
 		if err := ns.MetaStore.SaveDifficulty(currentDifficulty); err != nil {
-			log.Printf("⚠️  Failed to persist difficulty: %v", err)
-		}
+		log.Printf("⚠️  Failed to persist difficulty: %v", err)
+	}
 
 		log.Println("[storage] ✅ State persisted to disk")
 	}()
@@ -806,22 +806,24 @@ func (ns *NodeState) OnBlocksRangeRequest(fromHeight uint64, maxBlocks uint32) (
 
 	blocks = make([]json.RawMessage, 0, count)
 
-	// Serve blocks from memory or disk
+	// Serve blocks from disk (more reliable for IBD than memory)
 	for h := fromHeight; h < fromHeight+count; h++ {
 		var block Block
 
-		// Try memory first
-		if int(h) < len(ns.Chain) {
-			block = ns.Chain[h]
-		} else if ns.BlockStore != nil {
-			// Load from disk
+		// For IBD, always load from disk to ensure consistency
+		// Memory chain (ns.Chain) might be incomplete after database transfers
+		if ns.BlockStore != nil {
 			if err := ns.BlockStore.LoadBlock(h, &block); err != nil {
 				log.Printf("[ibd] failed to load block %d from disk: %v", h, err)
 				// Return what we have so far
 				break
 			}
+		} else if int(h) < len(ns.Chain) {
+			// Fallback to memory if no BlockStore (shouldn't happen in production)
+			block = ns.Chain[h]
 		} else {
 			// Block not available
+			log.Printf("[ibd] block %d not available (chain len=%d, no disk store)", h, len(ns.Chain))
 			break
 		}
 
