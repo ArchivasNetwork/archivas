@@ -48,6 +48,13 @@ type Network struct {
 	ibdInflight      int    // Number of concurrent IBD streams
 	ibdMaxConcurrent int    // Max concurrent IBD streams (default: 2)
 	ibdBatchSize     uint32 // Batch size for IBD (default: 512)
+
+	// v1.2.0: Peer isolation & chain compatibility
+	noPeerDiscovery  bool              // Disable automatic peer discovery
+	peerWhitelist    map[string]bool   // Normalized whitelist of allowed peers
+	checkpointHeight uint64            // Chain checkpoint height
+	checkpointHash   [32]byte          // Chain checkpoint hash
+	genesisHash      [32]byte          // Genesis block hash for validation
 }
 
 // NodeHandler interface for node callbacks
@@ -96,6 +103,10 @@ func NewNetwork(listenAddr string, handler NodeHandler) *Network {
 		ibdInflight:      0,
 		ibdMaxConcurrent: 2,
 		ibdBatchSize:     512,
+
+		// v1.2.0: Peer isolation (default: disabled)
+		noPeerDiscovery: false,
+		peerWhitelist:   make(map[string]bool),
 	}
 }
 
@@ -134,14 +145,145 @@ func (n *Network) SetGossipConfig(cfg GossipConfig) {
 	}
 }
 
+// IsolationConfig holds peer isolation and chain compatibility settings
+type IsolationConfig struct {
+	NoPeerDiscovery  bool
+	PeerWhitelist    []string
+	CheckpointHeight uint64
+	CheckpointHash   [32]byte
+	GenesisHash      [32]byte
+}
+
+// SetIsolationConfig updates the peer isolation configuration
+func (n *Network) SetIsolationConfig(cfg IsolationConfig) {
+	n.Lock()
+	defer n.Unlock()
+
+	n.noPeerDiscovery = cfg.NoPeerDiscovery
+	n.checkpointHeight = cfg.CheckpointHeight
+	n.checkpointHash = cfg.CheckpointHash
+	n.genesisHash = cfg.GenesisHash
+
+	// Normalize and add whitelist entries
+	for _, addr := range cfg.PeerWhitelist {
+		n.addToWhitelistLocked(addr)
+	}
+
+	if n.noPeerDiscovery {
+		log.Printf("[p2p] peer discovery DISABLED - only whitelisted peers allowed")
+	}
+	if len(n.peerWhitelist) > 0 {
+		log.Printf("[p2p] peer whitelist enabled: %d entries", len(n.peerWhitelist))
+	}
+	if n.checkpointHeight > 0 {
+		log.Printf("[p2p] chain checkpoint: height=%d hash=%x", n.checkpointHeight, n.checkpointHash[:8])
+	}
+}
+
+// addToWhitelistLocked adds an address to the whitelist (must be called with lock held)
+func (n *Network) addToWhitelistLocked(addr string) {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return
+	}
+
+	// Add the original address
+	n.peerWhitelist[addr] = true
+
+	// Try to resolve DNS and add resolved IPs
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		// Maybe it's just a hostname without port
+		host = addr
+		port = ""
+	}
+
+	// Add the host (without port)
+	if host != "" {
+		n.peerWhitelist[host] = true
+	}
+
+	// Resolve hostname to IPs
+	ips, err := net.LookupIP(host)
+	if err == nil {
+		for _, ip := range ips {
+			ipStr := ip.String()
+			n.peerWhitelist[ipStr] = true
+			if port != "" {
+				n.peerWhitelist[net.JoinHostPort(ipStr, port)] = true
+			}
+		}
+	}
+
+	log.Printf("[p2p] whitelisted: %s", addr)
+}
+
+// shouldAllowConnection checks if a connection should be allowed based on whitelist
+func (n *Network) shouldAllowConnection(remoteAddr string) bool {
+	// If whitelist is empty, allow all (backward compatibility)
+	if len(n.peerWhitelist) == 0 {
+		return true
+	}
+
+	// Extract host from address
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		host = remoteAddr
+	}
+
+	// Check direct matches
+	if n.peerWhitelist[remoteAddr] || n.peerWhitelist[host] {
+		return true
+	}
+
+	// Check if IP matches any whitelisted entry
+	ip := net.ParseIP(host)
+	if ip != nil {
+		if n.peerWhitelist[ip.String()] {
+			return true
+		}
+	}
+
+	return false
+}
+
+// gateOutbound checks if an outbound dial should be allowed
+func (n *Network) gateOutbound(addr string) bool {
+	n.RLock()
+	defer n.RUnlock()
+
+	if !n.shouldAllowConnection(addr) {
+		log.Printf("[GATER] rejected dial to %s: not whitelisted", addr)
+		return false
+	}
+	return true
+}
+
+// gateInbound checks if an inbound connection should be allowed
+func (n *Network) gateInbound(conn net.Conn) bool {
+	n.RLock()
+	defer n.RUnlock()
+
+	remoteAddr := conn.RemoteAddr().String()
+	if !n.shouldAllowConnection(remoteAddr) {
+		log.Printf("[GATER] rejected inbound from %s: not whitelisted", remoteAddr)
+		return false
+	}
+	return true
+}
+
 // SetPeerStore sets the peer store for persistence
 func (n *Network) SetPeerStore(store PeerStore) {
+	n.Lock()
+	noPeerDiscovery := n.noPeerDiscovery
+	n.Unlock()
+
 	n.Lock()
 	defer n.Unlock()
 	n.peerStore = store
 
-	// Auto-dial stored peers
-	if store != nil {
+	// Auto-dial stored peers (unless discovery is disabled)
+	if store != nil && !noPeerDiscovery {
 		go func() {
 			time.Sleep(2 * time.Second)
 			peers, _ := store.List()
@@ -154,11 +296,24 @@ func (n *Network) SetPeerStore(store PeerStore) {
 
 		// Start peer gossip loop
 		go n.peerGossipLoop()
+	} else if store != nil && noPeerDiscovery {
+		log.Printf("[p2p] peer store loaded but auto-dial disabled (noPeerDiscovery=true)")
+		// Still start gossip loop (it will exit early if noPeerDiscovery is true)
+		go n.peerGossipLoop()
 	}
 }
 
 // peerGossipLoop periodically shares known peers with connected peers
 func (n *Network) peerGossipLoop() {
+	// Skip if peer discovery is disabled
+	n.RLock()
+	if n.noPeerDiscovery {
+		log.Printf("[gossip] peer discovery disabled, skipping gossip routine")
+		n.RUnlock()
+		return
+	}
+	n.RUnlock()
+
 	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
 
@@ -169,6 +324,14 @@ func (n *Network) peerGossipLoop() {
 
 // gossipPeers shares our known peers with connected peers
 func (n *Network) gossipPeers() {
+	// Skip if peer discovery is disabled
+	n.RLock()
+	if n.noPeerDiscovery {
+		n.RUnlock()
+		return
+	}
+	n.RUnlock()
+
 	// Get list of known peers from store
 	if n.peerStore == nil {
 		return
@@ -233,6 +396,11 @@ func (n *Network) Stop() error {
 
 // ConnectPeer connects to a remote peer
 func (n *Network) ConnectPeer(address string) error {
+	// Gate outbound connections
+	if !n.gateOutbound(address) {
+		return fmt.Errorf("peer not whitelisted: %s", address)
+	}
+
 	log.Printf("[p2p] connecting to peer %s", address)
 
 	conn, err := net.DialTimeout("tcp", address, 10*time.Second)
@@ -280,6 +448,12 @@ func (n *Network) acceptLoop() {
 		if err != nil {
 			log.Printf("[p2p] accept error: %v", err)
 			return
+		}
+
+		// Gate inbound connections
+		if !n.gateInbound(conn) {
+			conn.Close()
+			continue
 		}
 
 		peer := &Peer{

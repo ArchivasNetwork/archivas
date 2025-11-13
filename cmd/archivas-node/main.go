@@ -42,6 +42,18 @@ type Block struct {
 	CumulativeWork uint64 // Total work from genesis to this block
 }
 
+// stringSliceFlag is a custom flag type for repeatable string flags
+type stringSliceFlag []string
+
+func (s *stringSliceFlag) String() string {
+	return strings.Join(*s, ",")
+}
+
+func (s *stringSliceFlag) Set(value string) error {
+	*s = append(*s, value)
+	return nil
+}
+
 // NodeState holds the entire node state
 type NodeState struct {
 	sync.RWMutex
@@ -103,6 +115,13 @@ func main() {
 	maxPeers := flag.Int("max-peers", 20, "Maximum number of peer connections")
 	dialsPerMin := flag.Int("gossip-dials-per-min", 5, "Maximum new peer dials per minute")
 	peersFile := flag.String("peers-file", "", "Path to peers.json (default: <db>/peers.json)")
+
+	// P2P Isolation flags (v1.2.0)
+	noPeerDiscovery := flag.Bool("no-peer-discovery", false, "Disable automatic peer discovery (only dial whitelisted peers)")
+	var peerWhitelist stringSliceFlag
+	flag.Var(&peerWhitelist, "peer-whitelist", "Whitelisted peer address (repeatable, format: host:port or IP:port)")
+	checkpointHeight := flag.Uint64("checkpoint-height", 0, "Chain checkpoint height for validation")
+	checkpointHash := flag.String("checkpoint-hash", "", "Chain checkpoint hash (hex, 64 chars)")
 
 	flag.Parse()
 
@@ -384,6 +403,41 @@ func main() {
 			MaxPeers:       *maxPeers,
 			DialsPerMinute: *dialsPerMin,
 		})
+
+		// Configure peer isolation (v1.2.0)
+		if *noPeerDiscovery || len(peerWhitelist) > 0 || *checkpointHeight > 0 {
+			// Parse checkpoint hash if provided
+			var checkpointHashBytes [32]byte
+			if *checkpointHash != "" {
+				hashBytes, err := hex.DecodeString(*checkpointHash)
+				if err != nil {
+					log.Fatalf("[p2p] Invalid checkpoint hash: %v", err)
+				}
+				if len(hashBytes) != 32 {
+					log.Fatalf("[p2p] Checkpoint hash must be 64 hex chars (32 bytes)")
+				}
+				copy(checkpointHashBytes[:], hashBytes)
+			}
+
+			p2pNet.SetIsolationConfig(p2p.IsolationConfig{
+				NoPeerDiscovery:  *noPeerDiscovery,
+				PeerWhitelist:    []string(peerWhitelist),
+				CheckpointHeight: *checkpointHeight,
+				CheckpointHash:   checkpointHashBytes,
+				GenesisHash:      nodeState.GenesisHash,
+			})
+
+			fmt.Println("🔒 P2P Isolation:")
+			if *noPeerDiscovery {
+				fmt.Println("   - Peer discovery: DISABLED")
+			}
+			if len(peerWhitelist) > 0 {
+				fmt.Printf("   - Whitelist: %d peer(s)\n", len(peerWhitelist))
+			}
+			if *checkpointHeight > 0 {
+				fmt.Printf("   - Checkpoint: height=%d hash=%s...\n", *checkpointHeight, (*checkpointHash)[:16])
+			}
+		}
 
 		// Set up peer persistence
 		peerStorePath := *peersFile
