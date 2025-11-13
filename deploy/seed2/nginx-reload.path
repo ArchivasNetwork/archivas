@@ -1,0 +1,11 @@
+[Unit]
+Description=Watch SSL Certificates for Changes
+Documentation=https://docs.archivas.ai
+
+[Path]
+PathChanged=/etc/nginx/ssl/
+PathChanged=/etc/letsencrypt/live/seed2.archivas.ai/
+
+[Install]
+WantedBy=multi-user.target
+

@@ -9,10 +9,27 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
+	"sync"
+	"time"
 )
 
 type Explorer struct {
-	nodeURL string
+	rpcURLs       []string
+	currentRPC    int
+	rpcMutex      sync.RWMutex
+	rpcStatus     map[string]*RPCStatus
+	requestTimeout time.Duration
+	maxRetries    int
+}
+
+type RPCStatus struct {
+	URL         string
+	Healthy     bool
+	LastCheck   time.Time
+	Failures    int
+	LastError   string
+	mutex       sync.RWMutex
 }
 
 type ChainInfo struct {
@@ -31,17 +48,43 @@ type BlockInfo struct {
 }
 
 func main() {
-	nodeURL := flag.String("node", "http://localhost:8080", "Node RPC URL")
+	nodeURL := flag.String("node", "http://localhost:8080", "Node RPC URL (can be comma-separated list)")
 	port := flag.String("port", ":8082", "Explorer HTTP port")
+	timeout := flag.Int("timeout", 3, "RPC request timeout in seconds")
+	retries := flag.Int("retries", 2, "Max retries per request")
 	flag.Parse()
 
-	explorer := &Explorer{
-		nodeURL: *nodeURL,
+	// Parse multiple RPC URLs (comma-separated)
+	rpcURLs := strings.Split(*nodeURL, ",")
+	for i := range rpcURLs {
+		rpcURLs[i] = strings.TrimSpace(rpcURLs[i])
 	}
 
+	// Initialize RPC status tracking
+	rpcStatus := make(map[string]*RPCStatus)
+	for _, url := range rpcURLs {
+		rpcStatus[url] = &RPCStatus{
+			URL:       url,
+			Healthy:   true,
+			LastCheck: time.Now(),
+		}
+	}
+
+	explorer := &Explorer{
+		rpcURLs:        rpcURLs,
+		currentRPC:     0,
+		rpcStatus:      rpcStatus,
+		requestTimeout: time.Duration(*timeout) * time.Second,
+		maxRetries:     *retries,
+	}
+
+	// Start health check goroutine
+	go explorer.healthCheckLoop()
+
 	log.Printf("🔍 Archivas Block Explorer Starting")
-	log.Printf("   Node: %s", *nodeURL)
+	log.Printf("   RPC Endpoints: %v", rpcURLs)
 	log.Printf("   Port: %s", *port)
+	log.Printf("   Timeout: %ds | Retries: %d", *timeout, *retries)
 	log.Println()
 
 	http.HandleFunc("/", explorer.handleHome)
@@ -50,6 +93,7 @@ func main() {
 	http.HandleFunc("/mempool", explorer.handleMempool)
 	http.HandleFunc("/peers", explorer.handlePeersPage)
 	http.HandleFunc("/tx/", explorer.handleTransaction)
+	http.HandleFunc("/rpc/status", explorer.handleRPCStatus)
 
 	log.Printf("🌐 Explorer running on %s", *port)
 	log.Fatal(http.ListenAndServe(*port, nil))
@@ -233,12 +277,147 @@ func (e *Explorer) handleAddress(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, data)
 }
 
+// fetchWithRetry attempts to fetch from RPC endpoints with automatic failover
+func (e *Explorer) fetchWithRetry(path string) (*http.Response, string, error) {
+	client := &http.Client{
+		Timeout: e.requestTimeout,
+	}
+
+	var lastErr error
+	triedURLs := make(map[string]bool)
+
+	for attempt := 0; attempt <= e.maxRetries; attempt++ {
+		// Get next healthy RPC endpoint
+		rpcURL := e.getNextHealthyRPC()
+		if rpcURL == "" {
+			return nil, "", fmt.Errorf("no healthy RPC endpoints available")
+		}
+
+		// Skip if already tried this URL in this request
+		if triedURLs[rpcURL] {
+			continue
+		}
+		triedURLs[rpcURL] = true
+
+		fullURL := rpcURL + path
+		resp, err := client.Get(fullURL)
+
+		if err == nil && resp.StatusCode < 500 {
+			// Success! Mark RPC as healthy
+			e.markRPCHealthy(rpcURL)
+			return resp, rpcURL, nil
+		}
+
+		// Failed - mark as unhealthy and try next
+		if err != nil {
+			lastErr = err
+			e.markRPCUnhealthy(rpcURL, err.Error())
+		} else {
+			resp.Body.Close()
+			lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)
+			e.markRPCUnhealthy(rpcURL, lastErr.Error())
+		}
+
+		log.Printf("⚠️  RPC %s failed (attempt %d/%d): %v", rpcURL, attempt+1, e.maxRetries+1, lastErr)
+	}
+
+	return nil, "", fmt.Errorf("all RPC endpoints failed, last error: %v", lastErr)
+}
+
+// getNextHealthyRPC returns the next healthy RPC URL using round-robin
+func (e *Explorer) getNextHealthyRPC() string {
+	e.rpcMutex.Lock()
+	defer e.rpcMutex.Unlock()
+
+	// Try to find a healthy RPC starting from current position
+	for i := 0; i < len(e.rpcURLs); i++ {
+		idx := (e.currentRPC + i) % len(e.rpcURLs)
+		url := e.rpcURLs[idx]
+
+		if status, ok := e.rpcStatus[url]; ok {
+			status.mutex.RLock()
+			healthy := status.Healthy || time.Since(status.LastCheck) > 10*time.Second
+			status.mutex.RUnlock()
+
+			if healthy {
+				e.currentRPC = (idx + 1) % len(e.rpcURLs)
+				return url
+			}
+		}
+	}
+
+	// No healthy RPCs, return first one anyway (might have recovered)
+	if len(e.rpcURLs) > 0 {
+		return e.rpcURLs[0]
+	}
+
+	return ""
+}
+
+// markRPCHealthy marks an RPC endpoint as healthy
+func (e *Explorer) markRPCHealthy(url string) {
+	if status, ok := e.rpcStatus[url]; ok {
+		status.mutex.Lock()
+		status.Healthy = true
+		status.Failures = 0
+		status.LastCheck = time.Now()
+		status.LastError = ""
+		status.mutex.Unlock()
+	}
+}
+
+// markRPCUnhealthy marks an RPC endpoint as unhealthy
+func (e *Explorer) markRPCUnhealthy(url string, errMsg string) {
+	if status, ok := e.rpcStatus[url]; ok {
+		status.mutex.Lock()
+		status.Healthy = false
+		status.Failures++
+		status.LastCheck = time.Now()
+		status.LastError = errMsg
+		status.mutex.Unlock()
+	}
+}
+
+// healthCheckLoop periodically checks RPC endpoints
+func (e *Explorer) healthCheckLoop() {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		for _, url := range e.rpcURLs {
+			go e.checkRPCHealth(url)
+		}
+	}
+}
+
+// checkRPCHealth performs a health check on a single RPC endpoint
+func (e *Explorer) checkRPCHealth(url string) {
+	client := &http.Client{
+		Timeout: 2 * time.Second,
+	}
+
+	resp, err := client.Get(url + "/chainTip")
+	if err != nil {
+		e.markRPCUnhealthy(url, err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 200 {
+		e.markRPCHealthy(url)
+	} else {
+		e.markRPCUnhealthy(url, fmt.Sprintf("HTTP %d", resp.StatusCode))
+	}
+}
+
 func (e *Explorer) getChainTip() (*ChainInfo, error) {
-	resp, err := http.Get(e.nodeURL + "/chainTip")
+	resp, rpcURL, err := e.fetchWithRetry("/chainTip")
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+
+	_ = rpcURL // Used RPC endpoint (could display in UI)
 
 	// v1.1.0: chainTip returns strings instead of numbers
 	var result struct {
@@ -306,8 +485,8 @@ func (e *Explorer) getChainTip() (*ChainInfo, error) {
 }
 
 func (e *Explorer) getBalance(address string) (int64, uint64, error) {
-	url := fmt.Sprintf("%s/account/%s", e.nodeURL, address)
-	resp, err := http.Get(url)
+	path := fmt.Sprintf("/account/%s", address)
+	resp, _, err := e.fetchWithRetry(path)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -385,7 +564,7 @@ func (e *Explorer) handleMempool(w http.ResponseWriter, r *http.Request) {
 }
 
 func (e *Explorer) handlePeersPage(w http.ResponseWriter, r *http.Request) {
-	resp, err := http.Get(e.nodeURL + "/peers")
+	resp, _, err := e.fetchWithRetry("/peers")
 	if err != nil {
 		http.Error(w, "Failed to get peers", http.StatusInternalServerError)
 		return
@@ -467,4 +646,58 @@ func (e *Explorer) handleTransaction(w http.ResponseWriter, r *http.Request) {
 `))
 
 	tmpl.Execute(w, txHash)
+}
+
+func (e *Explorer) handleRPCStatus(w http.ResponseWriter, r *http.Request) {
+	e.rpcMutex.RLock()
+	defer e.rpcMutex.RUnlock()
+
+	type StatusResponse struct {
+		RPC         string    `json:"rpc"`
+		Healthy     bool      `json:"healthy"`
+		Failures    int       `json:"failures"`
+		LastCheck   time.Time `json:"last_check"`
+		LastError   string    `json:"last_error,omitempty"`
+	}
+
+	var statuses []StatusResponse
+	for _, url := range e.rpcURLs {
+		if status, ok := e.rpcStatus[url]; ok {
+			status.mutex.RLock()
+			statuses = append(statuses, StatusResponse{
+				RPC:       status.URL,
+				Healthy:   status.Healthy,
+				Failures:  status.Failures,
+				LastCheck: status.LastCheck,
+				LastError: status.LastError,
+			})
+			status.mutex.RUnlock()
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"rpcs":        statuses,
+		"total":       len(statuses),
+		"healthy":     countHealthy(statuses),
+		"current_rpc": e.rpcURLs[e.currentRPC%len(e.rpcURLs)],
+	})
+}
+
+func countHealthy(statuses []StatusResponse) int {
+	count := 0
+	for _, s := range statuses {
+		if s.Healthy {
+			count++
+		}
+	}
+	return count
+}
+
+type StatusResponse struct {
+	RPC         string    `json:"rpc"`
+	Healthy     bool      `json:"healthy"`
+	Failures    int       `json:"failures"`
+	LastCheck   time.Time `json:"last_check"`
+	LastError   string    `json:"last_error,omitempty"`
 }

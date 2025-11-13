@@ -1,0 +1,17 @@
+[Unit]
+Description=Nginx Auto-Reload on Certificate Renewal
+Documentation=https://docs.archivas.ai
+After=nginx.service
+Requires=nginx.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/nginx -t
+ExecStartPost=/bin/systemctl reload nginx
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nginx-reload
+
+[Install]
+WantedBy=multi-user.target
+
