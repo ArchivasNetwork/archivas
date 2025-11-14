@@ -9,7 +9,7 @@ Type=simple
 EnvironmentFile=/etc/archivas/seed2-node.env
 User=root
 Group=root
-WorkingDirectory=/root/archivas
+WorkingDirectory=/home/ubuntu/archivas
 
 # Node configuration
 ExecStart=/home/ubuntu/archivas/archivas-node \
