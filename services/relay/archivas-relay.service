@@ -1,0 +1,31 @@
+[Unit]
+Description=Archivas Seed2 Relay - Health & Metrics Service
+Documentation=https://docs.archivas.ai
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/archivas/services/relay
+ExecStart=/usr/bin/node /root/archivas/services/relay/index.js
+Restart=always
+RestartSec=10
+
+# Environment variables
+Environment=NODE_ENV=production
+Environment=PORT=9090
+Environment=UPSTREAM_URL=https://seed.archivas.ai
+Environment=CACHE_DIR=/var/cache/nginx/archivas_rpc
+
+# Resource limits
+LimitNOFILE=65536
+MemoryMax=512M
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=archivas-relay
+
+[Install]
+WantedBy=multi-user.target
+

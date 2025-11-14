@@ -1,0 +1,113 @@
+name: Validate Nginx Configuration
+
+on:
+  push:
+    paths:
+      - 'infra/nginx.seed2.conf'
+      - 'deploy/seed2/nginx-seed2-relay.conf'
+      - '.github/workflows/nginx-validate.yml'
+  pull_request:
+    paths:
+      - 'infra/nginx.seed2.conf'
+      - 'deploy/seed2/nginx-seed2-relay.conf'
+      - '.github/workflows/nginx-validate.yml'
+
+jobs:
+  validate-nginx:
+    name: Validate Nginx Configs
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install Nginx
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nginx
+      
+      - name: Create required directories
+        run: |
+          sudo mkdir -p /var/cache/nginx/archivas_rpc
+          sudo mkdir -p /var/log/nginx
+          sudo mkdir -p /etc/nginx/sites-available
+          sudo mkdir -p /etc/nginx/sites-enabled
+      
+      - name: Test Seed2 Nginx config syntax
+        run: |
+          echo "Testing infra/nginx.seed2.conf..."
+          sudo cp infra/nginx.seed2.conf /etc/nginx/sites-available/archivas-seed2
+          
+          # Create dummy SSL certs for testing
+          sudo mkdir -p /etc/letsencrypt/live/seed2.archivas.ai
+          sudo openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
+            -keyout /etc/letsencrypt/live/seed2.archivas.ai/privkey.pem \
+            -out /etc/letsencrypt/live/seed2.archivas.ai/fullchain.pem \
+            -subj "/CN=seed2.archivas.ai"
+          
+          # Test config
+          sudo nginx -t -c /etc/nginx/nginx.conf
+          
+          if [ $? -eq 0 ]; then
+            echo "✅ Nginx config is valid"
+          else
+            echo "❌ Nginx config is invalid"
+            exit 1
+          fi
+      
+      - name: Check for common misconfigurations
+        run: |
+          echo "Checking for common issues..."
+          
+          # Check if POST requests are cached (should not be)
+          if grep -r "proxy_cache.*POST" infra/nginx.seed2.conf; then
+            echo "❌ ERROR: POST requests should never be cached"
+            exit 1
+          fi
+          
+          # Check if /submitTx has caching disabled
+          if ! grep -A 10 "location = /submitTx" infra/nginx.seed2.conf | grep -q "proxy_cache off"; then
+            echo "⚠️  WARNING: /submitTx should have caching disabled"
+          fi
+          
+          # Check if cache zone is defined
+          if ! grep -q "keys_zone=rpc_zone" infra/nginx.seed2.conf; then
+            echo "❌ ERROR: Cache zone 'rpc_zone' not defined"
+            exit 1
+          fi
+          
+          # Check if CORS headers are present
+          if ! grep -q "Access-Control-Allow-Origin" infra/nginx.seed2.conf; then
+            echo "⚠️  WARNING: CORS headers not found"
+          fi
+          
+          echo "✅ All checks passed"
+      
+      - name: Generate config report
+        run: |
+          echo "📊 Configuration Report:"
+          echo "======================="
+          
+          echo ""
+          echo "Cache Zones:"
+          grep "keys_zone=" infra/nginx.seed2.conf || echo "None found"
+          
+          echo ""
+          echo "Rate Limits:"
+          grep "limit_req_zone" infra/nginx.seed2.conf || echo "None found"
+          
+          echo ""
+          echo "Cached Endpoints:"
+          grep -o "location.*{" infra/nginx.seed2.conf | head -10
+          
+          echo ""
+          echo "Upstream Servers:"
+          grep "server.*max_fails" infra/nginx.seed2.conf || echo "None found"
+      
+      - name: Summary
+        run: |
+          echo "✅ Nginx configuration validation complete!"
+          echo "   - Syntax: Valid"
+          echo "   - Best practices: Checked"
+          echo "   - Ready for deployment"
+

@@ -1,0 +1,265 @@
+{
+  "dashboard": {
+    "title": "Archivas Seed2 RPC Relay",
+    "tags": ["archivas", "relay", "rpc"],
+    "timezone": "browser",
+    "editable": true,
+    "graphTooltip": 1,
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "gridPos": {"x": 0, "y": 0, "w": 12, "h": 6},
+        "title": "Cache Hit Ratio",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(seed2_cache_hits_total[5m]) / (rate(seed2_cache_hits_total[5m]) + rate(seed2_cache_miss_total[5m])) * 100",
+            "legendFormat": "Hit Ratio %",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"format": "percent", "min": 0, "max": 100},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 2,
+        "gridPos": {"x": 12, "y": 0, "w": 12, "h": 6},
+        "title": "Request Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(seed2_cache_hits_total[1m]) + rate(seed2_cache_miss_total[1m])",
+            "legendFormat": "Requests/sec",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "gridPos": {"x": 0, "y": 6, "w": 8, "h": 6},
+        "title": "Upstream Latency",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, rate(seed2_upstream_latency_ms_bucket[5m]))",
+            "legendFormat": "p50",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(seed2_upstream_latency_ms_bucket[5m]))",
+            "legendFormat": "p95",
+            "refId": "B"
+          },
+          {
+            "expr": "histogram_quantile(0.99, rate(seed2_upstream_latency_ms_bucket[5m]))",
+            "legendFormat": "p99",
+            "refId": "C"
+          }
+        ],
+        "yaxes": [
+          {"format": "ms"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 4,
+        "gridPos": {"x": 8, "y": 6, "w": 8, "h": 6},
+        "title": "TX Submit Success Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(seed2_tx_submit_success_total[5m])",
+            "legendFormat": "Success",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(seed2_tx_submit_failed_total[5m])",
+            "legendFormat": "Failed",
+            "refId": "B"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "gridPos": {"x": 16, "y": 6, "w": 8, "h": 6},
+        "title": "Rate Limiting",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(seed2_rate_limited_total[5m])",
+            "legendFormat": "Rate Limited Req/s",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "gridPos": {"x": 0, "y": 12, "w": 8, "h": 4},
+        "title": "Cache Size",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "seed2_cache_size_bytes / 1024 / 1024",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"]
+          },
+          "text": {}
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "decmbytes",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": null, "color": "green"},
+                {"value": 800, "color": "yellow"},
+                {"value": 950, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 7,
+        "gridPos": {"x": 8, "y": 12, "w": 8, "h": 4},
+        "title": "Cache Free Space",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "seed2_cache_free_space_percent",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"]
+          }
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": null, "color": "red"},
+                {"value": 10, "color": "yellow"},
+                {"value": 30, "color": "green"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 8,
+        "gridPos": {"x": 16, "y": 12, "w": 8, "h": 4},
+        "title": "Current Hit Ratio",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "rate(seed2_cache_hits_total[5m]) / (rate(seed2_cache_hits_total[5m]) + rate(seed2_cache_miss_total[5m])) * 100",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"]
+          }
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": null, "color": "red"},
+                {"value": 50, "color": "yellow"},
+                {"value": 70, "color": "green"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 9,
+        "gridPos": {"x": 0, "y": 16, "w": 24, "h": 6},
+        "title": "Cache Operations by Endpoint",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(seed2_cache_hits_total{endpoint=~\".+\"}[5m])",
+            "legendFormat": "HIT {{endpoint}}",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(seed2_cache_miss_total{endpoint=~\".+\"}[5m])",
+            "legendFormat": "MISS {{endpoint}}",
+            "refId": "B"
+          }
+        ],
+        "legend": {
+          "show": true,
+          "alignAsTable": true,
+          "rightSide": true
+        }
+      },
+      {
+        "id": 10,
+        "gridPos": {"x": 0, "y": 22, "w": 12, "h": 6},
+        "title": "Node.js Memory Usage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "seed2_nodejs_heap_size_used_bytes / 1024 / 1024",
+            "legendFormat": "Heap Used MB",
+            "refId": "A"
+          },
+          {
+            "expr": "seed2_nodejs_heap_size_total_bytes / 1024 / 1024",
+            "legendFormat": "Heap Total MB",
+            "refId": "B"
+          }
+        ],
+        "yaxes": [
+          {"format": "decmbytes"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 11,
+        "gridPos": {"x": 12, "y": 22, "w": 12, "h": 6},
+        "title": "Node.js CPU Usage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(seed2_process_cpu_user_seconds_total[1m]) * 100",
+            "legendFormat": "User CPU %",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(seed2_process_cpu_system_seconds_total[1m]) * 100",
+            "legendFormat": "System CPU %",
+            "refId": "B"
+          }
+        ],
+        "yaxes": [
+          {"format": "percent"},
+          {"format": "short"}
+        ]
+      }
+    ]
+  }
+}
+
