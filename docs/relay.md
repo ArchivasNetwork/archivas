@@ -21,11 +21,10 @@ Seed2 is a **stateless RPC relay** for the Archivas network. It acts as a cachin
 - ✅ Transaction submission proxy
 - ✅ Load balancer and circuit breaker
 - ✅ Rate limiter and DDoS protection
+- ✅ **Full P2P node** (participates in consensus, gossips blocks)
 
 ### What Seed2 IS NOT:
-- ❌ Full blockchain node (no P2P, no consensus)
-- ❌ Farmer/validator peer (no block propagation)
-- ❌ Data source (proxies to Seed1)
+- ❌ Primary data source (Seed1 is canonical)
 - ❌ WebSocket event streaming (use Seed1 directly)
 
 ---
@@ -99,21 +98,26 @@ const submitTransaction = async (signedTx) => {
 
 ---
 
-### ❌ **Farmers & Validators** → **NO, connect to Seed1 P2P**
+### ✅ **Farmers & Validators** → **YES, use Seed1 + Seed2 for P2P**
 
-Farmers and validators **MUST NOT use Seed2** for peer-to-peer operations. They need direct P2P connections for:
-- Block propagation
-- Proof-of-Space challenges
-- Consensus participation
+Farmers and validators can now connect to **both Seed1 and Seed2** for peer-to-peer operations. Seed2 is a full node that participates in consensus and block propagation.
 
-**Use Seed1 for P2P:**
+**Benefits of dual-peering:**
+- 🔄 Load balancing across two seed nodes
+- 🛡️ Improved resilience (if one seed is down, the other continues)
+- ⚡ Better block propagation
+- 📡 More diverse peer connections
+
+**Recommended P2P configuration:**
 
 ```bash
-# Farmer configuration
+# Farmer configuration (dual-peer setup)
 ./archivas-farmer \
   --farmer-privkey YOUR_PRIVKEY \
   --plot-dir ./plots \
-  --p2p-peer seed.archivas.ai:9090 \
+  --p2p-peer seed.archivas.ai:30303 \
+  --p2p-peer seed2.archivas.ai:30303 \
+  --no-peer-discovery \
   --rpc http://localhost:8080
 
 # Node configuration (if running your own)
@@ -124,20 +128,22 @@ Farmers and validators **MUST NOT use Seed2** for peer-to-peer operations. They 
   --rpc 127.0.0.1:8080
 ```
 
-**Why not Seed2?**
-- Seed2 has **no P2P port** (no consensus)
-- Seed2 **does not propagate blocks**
-- Farmers connecting to Seed2 will **not receive challenges**
-- Validators connecting to Seed2 will **fork**
+**P2P Ports:**
+- Seed1 P2P: `seed.archivas.ai:30303`
+- Seed2 P2P: `seed2.archivas.ai:30303`
 
-**Farmers may use Seed2 for:**
+**Why dual-peer setup?**
+- Distributes load across both seed nodes
+- If Seed1 is overloaded, Seed2 picks up the slack
+- Faster sync during Initial Block Download (IBD)
+- More reliable block propagation
+
+**Farmers should also use Seed2 HTTPS relay for:**
 - ✅ Checking balances/rewards (read-only queries)
 - ✅ Submitting payout transactions
+- ✅ Explorer/dashboard queries
 
-**Farmers must NOT use Seed2 for:**
-- ❌ P2P peering (use `--p2p-peer seed.archivas.ai:9090`)
-- ❌ Block propagation
-- ❌ Proof challenges
+**Note:** Seed2 P2P port (`:30303`) is for blockchain consensus. The HTTPS relay (`:443`) is for read-only RPC queries
 
 ---
 
@@ -561,15 +567,24 @@ Writes: https://seed2.archivas.ai/submitTx
 ```
 
 ### For Farmers
-```
-P2P: seed.archivas.ai:9090 (Seed1 ONLY)
-RPC: https://seed2.archivas.ai (balance checks only)
+```bash
+# P2P Peers (use both for resilience)
+--p2p-peer seed.archivas.ai:30303
+--p2p-peer seed2.archivas.ai:30303
+
+# RPC (read-only queries and TX submission)
+RPC: https://seed2.archivas.ai
 ```
 
 ### For Validators
-```
-P2P Peers: seed.archivas.ai:9090, OTHER_PEERS
-RPC: http://localhost:8080 (own node)
+```bash
+# P2P Peers (use both seeds + other validators)
+--p2p-peer seed.archivas.ai:30303
+--p2p-peer seed2.archivas.ai:30303
+--p2p-peer validator02.archivas.ai:30303
+
+# RPC (own node for local queries)
+RPC: http://localhost:8080
 ```
 
 ---

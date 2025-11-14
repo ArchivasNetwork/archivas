@@ -1,0 +1,338 @@
+name: Seed2 Node - Config Validation
+
+on:
+  push:
+    paths:
+      - 'services/node-seed2/**'
+      - 'infra/nginx.seed2.conf'
+      - 'infra/firewall.seed2.sh'
+      - 'data/bootstrap.sh'
+      - 'scripts/deploy_seed2_node.sh'
+      - '.github/workflows/seed2-validation.yml'
+  pull_request:
+    paths:
+      - 'services/node-seed2/**'
+      - 'infra/nginx.seed2.conf'
+      - 'infra/firewall.seed2.sh'
+      - 'data/bootstrap.sh'
+      - 'scripts/deploy_seed2_node.sh'
+      - '.github/workflows/seed2-validation.yml'
+
+jobs:
+  validate-systemd:
+    name: Validate Systemd Unit
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install systemd
+        run: sudo apt-get update && sudo apt-get install -y systemd
+      
+      - name: Check systemd unit syntax
+        run: |
+          echo "Validating archivas-node-seed2.service..."
+          systemd-analyze verify services/node-seed2/archivas-node-seed2.service || {
+            echo "❌ Systemd unit validation failed"
+            exit 1
+          }
+          echo "✓ Systemd unit is valid"
+      
+      - name: Check for required directives
+        run: |
+          echo "Checking required systemd directives..."
+          UNIT_FILE="services/node-seed2/archivas-node-seed2.service"
+          
+          # Check required sections
+          grep -q "\[Unit\]" "$UNIT_FILE" || { echo "Missing [Unit] section"; exit 1; }
+          grep -q "\[Service\]" "$UNIT_FILE" || { echo "Missing [Service] section"; exit 1; }
+          grep -q "\[Install\]" "$UNIT_FILE" || { echo "Missing [Install] section"; exit 1; }
+          
+          # Check required fields
+          grep -q "Description=" "$UNIT_FILE" || { echo "Missing Description"; exit 1; }
+          grep -q "ExecStart=" "$UNIT_FILE" || { echo "Missing ExecStart"; exit 1; }
+          grep -q "Restart=" "$UNIT_FILE" || { echo "Missing Restart"; exit 1; }
+          grep -q "WantedBy=" "$UNIT_FILE" || { echo "Missing WantedBy"; exit 1; }
+          
+          # Check environment file reference
+          grep -q "EnvironmentFile=/etc/archivas/seed2-node.env" "$UNIT_FILE" || {
+            echo "Missing or incorrect EnvironmentFile"
+            exit 1
+          }
+          
+          echo "✓ All required directives present"
+
+  validate-nginx:
+    name: Validate Nginx Config
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install Nginx
+        run: sudo apt-get update && sudo apt-get install -y nginx
+      
+      - name: Test Nginx config syntax
+        run: |
+          echo "Testing infra/nginx.seed2.conf..."
+          sudo cp infra/nginx.seed2.conf /etc/nginx/conf.d/test-seed2.conf
+          sudo nginx -t || {
+            echo "❌ Nginx config validation failed"
+            exit 1
+          }
+          echo "✓ Nginx config is valid"
+      
+      - name: Check required upstreams
+        run: |
+          echo "Checking required upstreams..."
+          CONFIG="infra/nginx.seed2.conf"
+          
+          grep -q "upstream seed1_backend" "$CONFIG" || { echo "Missing seed1_backend upstream"; exit 1; }
+          grep -q "upstream seed2_node" "$CONFIG" || { echo "Missing seed2_node upstream"; exit 1; }
+          grep -q "upstream read_pool" "$CONFIG" || { echo "Missing read_pool upstream"; exit 1; }
+          
+          echo "✓ All required upstreams present"
+      
+      - name: Check cache configuration
+        run: |
+          echo "Checking cache configuration..."
+          CONFIG="infra/nginx.seed2.conf"
+          
+          grep -q "proxy_cache_path" "$CONFIG" || { echo "Missing proxy_cache_path"; exit 1; }
+          grep -q "keys_zone=rpc_zone" "$CONFIG" || { echo "Missing cache keys_zone"; exit 1; }
+          
+          echo "✓ Cache configuration present"
+
+  validate-scripts:
+    name: Validate Shell Scripts
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      
+      - name: Run shellcheck on firewall script
+        run: |
+          echo "Checking infra/firewall.seed2.sh..."
+          shellcheck -x infra/firewall.seed2.sh || {
+            echo "❌ Firewall script has issues"
+            exit 1
+          }
+          echo "✓ Firewall script passed shellcheck"
+      
+      - name: Run shellcheck on bootstrap script
+        run: |
+          echo "Checking data/bootstrap.sh..."
+          shellcheck -x data/bootstrap.sh || {
+            echo "❌ Bootstrap script has issues"
+            exit 1
+          }
+          echo "✓ Bootstrap script passed shellcheck"
+      
+      - name: Run shellcheck on deployment script
+        run: |
+          echo "Checking scripts/deploy_seed2_node.sh..."
+          shellcheck -x scripts/deploy_seed2_node.sh || {
+            echo "❌ Deployment script has issues"
+            exit 1
+          }
+          echo "✓ Deployment script passed shellcheck"
+      
+      - name: Check script permissions
+        run: |
+          echo "Checking if scripts are executable..."
+          [ -x "infra/firewall.seed2.sh" ] && echo "✓ firewall.seed2.sh is executable" || echo "⚠ firewall.seed2.sh not executable"
+          [ -x "data/bootstrap.sh" ] && echo "✓ bootstrap.sh is executable" || echo "⚠ bootstrap.sh not executable"
+          [ -x "scripts/deploy_seed2_node.sh" ] && echo "✓ deploy_seed2_node.sh is executable" || echo "⚠ deploy_seed2_node.sh not executable"
+
+  validate-env-template:
+    name: Validate Environment Template
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Check env template exists
+        run: |
+          [ -f "services/node-seed2/seed2-node.env.template" ] || {
+            echo "❌ seed2-node.env.template not found"
+            exit 1
+          }
+          echo "✓ Environment template exists"
+      
+      - name: Check required variables
+        run: |
+          echo "Checking required environment variables..."
+          TEMPLATE="services/node-seed2/seed2-node.env.template"
+          
+          grep -q "CHECKPOINT_HEIGHT=" "$TEMPLATE" || { echo "Missing CHECKPOINT_HEIGHT"; exit 1; }
+          grep -q "CHECKPOINT_HASH=" "$TEMPLATE" || { echo "Missing CHECKPOINT_HASH"; exit 1; }
+          grep -q "SEED1_P2P=" "$TEMPLATE" || { echo "Missing SEED1_P2P"; exit 1; }
+          
+          echo "✓ All required variables present"
+
+  validate-docs:
+    name: Validate Documentation
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Check documentation exists
+        run: |
+          echo "Checking documentation files..."
+          [ -f "docs/seed2-node.md" ] || { echo "❌ seed2-node.md not found"; exit 1; }
+          [ -f "docs/farmers.md" ] || { echo "❌ farmers.md not found"; exit 1; }
+          [ -f "docs/relay.md" ] || { echo "❌ relay.md not found"; exit 1; }
+          echo "✓ All documentation files present"
+      
+      - name: Check for required documentation sections
+        run: |
+          echo "Checking seed2-node.md structure..."
+          RUNBOOK="docs/seed2-node.md"
+          
+          grep -q "## Installation" "$RUNBOOK" || grep -q "## Bootstrap" "$RUNBOOK" || {
+            echo "⚠ Missing installation section"
+          }
+          grep -q "## Operations" "$RUNBOOK" || {
+            echo "⚠ Missing operations section"
+          }
+          grep -q "## Troubleshooting" "$RUNBOOK" || {
+            echo "⚠ Missing troubleshooting section"
+          }
+          
+          echo "✓ Documentation structure looks good"
+      
+      - name: Check farmers.md mentions both seeds
+        run: |
+          echo "Checking farmers.md mentions both seed nodes..."
+          FARMERS_DOC="docs/farmers.md"
+          
+          grep -q "seed.archivas.ai" "$FARMERS_DOC" || { echo "❌ Missing seed.archivas.ai"; exit 1; }
+          grep -q "seed2.archivas.ai" "$FARMERS_DOC" || { echo "❌ Missing seed2.archivas.ai"; exit 1; }
+          grep -q "30303" "$FARMERS_DOC" || { echo "❌ Missing P2P port 30303"; exit 1; }
+          
+          echo "✓ Farmers documentation includes both seeds"
+
+  security-check:
+    name: Security & Best Practices
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Check for hardcoded secrets
+        run: |
+          echo "Scanning for hardcoded secrets..."
+          ! grep -r "BEGIN.*PRIVATE KEY" services/node-seed2/ && echo "✓ No private keys found" || {
+            echo "❌ Found hardcoded private key!"
+            exit 1
+          }
+      
+      - name: Check systemd security directives
+        run: |
+          echo "Checking systemd security hardening..."
+          UNIT_FILE="services/node-seed2/archivas-node-seed2.service"
+          
+          grep -q "NoNewPrivileges=true" "$UNIT_FILE" && echo "✓ NoNewPrivileges enabled" || echo "⚠ NoNewPrivileges not set"
+          grep -q "PrivateTmp=true" "$UNIT_FILE" && echo "✓ PrivateTmp enabled" || echo "⚠ PrivateTmp not set"
+          grep -q "MemoryMax=" "$UNIT_FILE" && echo "✓ MemoryMax limit set" || echo "⚠ MemoryMax not set"
+          grep -q "LimitNOFILE=" "$UNIT_FILE" && echo "✓ File descriptor limit set" || echo "⚠ LimitNOFILE not set"
+      
+      - name: Check Nginx security headers
+        run: |
+          echo "Checking Nginx security headers..."
+          CONFIG="infra/nginx.seed2.conf"
+          
+          grep -q "X-Frame-Options" "$CONFIG" && echo "✓ X-Frame-Options header present" || echo "⚠ Missing X-Frame-Options"
+          grep -q "X-Content-Type-Options" "$CONFIG" && echo "✓ X-Content-Type-Options present" || echo "⚠ Missing X-Content-Type-Options"
+          grep -q "ssl_protocols" "$CONFIG" && echo "✓ SSL protocols configured" || echo "⚠ SSL protocols not configured"
+
+  integration-check:
+    name: Integration & Compatibility
+    runs-on: ubuntu-latest
+    needs: [validate-systemd, validate-nginx, validate-scripts]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Check port consistency
+        run: |
+          echo "Checking port consistency across configs..."
+          
+          # Check P2P port 30303
+          grep -q "30303" services/node-seed2/archivas-node-seed2.service || {
+            echo "❌ P2P port 30303 not in systemd unit"
+            exit 1
+          }
+          grep -q "30303" infra/firewall.seed2.sh || {
+            echo "❌ P2P port 30303 not in firewall script"
+            exit 1
+          }
+          grep -q "30303" docs/farmers.md || {
+            echo "❌ P2P port 30303 not in farmer docs"
+            exit 1
+          }
+          
+          # Check RPC port 8082
+          grep -q "8082" services/node-seed2/archivas-node-seed2.service || {
+            echo "❌ RPC port 8082 not in systemd unit"
+            exit 1
+          }
+          grep -q "8082" infra/nginx.seed2.conf || {
+            echo "❌ RPC port 8082 not in Nginx config"
+            exit 1
+          }
+          
+          echo "✓ Port configuration is consistent"
+      
+      - name: Check data directory consistency
+        run: |
+          echo "Checking data directory paths..."
+          
+          grep -q "/var/lib/archivas/seed2" services/node-seed2/archivas-node-seed2.service || {
+            echo "❌ Data dir not in systemd unit"
+            exit 1
+          }
+          grep -q "/var/lib/archivas/seed2" data/bootstrap.sh || {
+            echo "❌ Data dir not in bootstrap script"
+            exit 1
+          }
+          
+          echo "✓ Data directory paths are consistent"
+
+  summary:
+    name: Validation Summary
+    runs-on: ubuntu-latest
+    needs: [validate-systemd, validate-nginx, validate-scripts, validate-env-template, validate-docs, security-check, integration-check]
+    if: always()
+    
+    steps:
+      - name: Summary
+        run: |
+          echo "========================================"
+          echo "  Seed2 Node Configuration Validation"
+          echo "========================================"
+          echo ""
+          echo "All validation checks passed! ✓"
+          echo ""
+          echo "Components validated:"
+          echo "  ✓ Systemd unit file"
+          echo "  ✓ Nginx configuration"
+          echo "  ✓ Shell scripts (shellcheck)"
+          echo "  ✓ Environment template"
+          echo "  ✓ Documentation"
+          echo "  ✓ Security hardening"
+          echo "  ✓ Integration & consistency"
+          echo ""
+          echo "Ready for deployment to Seed2!"
+

@@ -1,0 +1,54 @@
+[Unit]
+Description=Archivas Full Node (Seed2) - P2P Peer
+Documentation=https://docs.archivas.ai
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/archivas/seed2-node.env
+User=root
+Group=root
+WorkingDirectory=/root/archivas
+
+# Node configuration
+ExecStart=/root/archivas/archivas-node \
+  --data-dir /var/lib/archivas/seed2 \
+  --p2p 0.0.0.0:30303 \
+  --rpc 127.0.0.1:8082 \
+  --peer ${SEED1_P2P} \
+  --checkpoint-height ${CHECKPOINT_HEIGHT} \
+  --checkpoint-hash ${CHECKPOINT_HASH} \
+  --max-peers 100
+
+# Restart configuration
+Restart=always
+RestartSec=10
+StartLimitInterval=300
+StartLimitBurst=5
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+MemoryMax=16G
+MemoryHigh=14G
+CPUQuota=400%
+TasksMax=8192
+
+# Performance tuning
+Environment=GOMAXPROCS=8
+Environment=GOGC=50
+Environment=GODEBUG=madvdontneed=1
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=archivas-node-seed2
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+
