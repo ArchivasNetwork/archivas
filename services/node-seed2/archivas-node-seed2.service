@@ -12,14 +12,14 @@ Group=root
 WorkingDirectory=/root/archivas
 
 # Node configuration
-ExecStart=/root/archivas/archivas-node \
-  --data-dir /var/lib/archivas/seed2 \
-  --p2p 0.0.0.0:30303 \
-  --rpc 127.0.0.1:8082 \
-  --peer ${SEED1_P2P} \
-  --checkpoint-height ${CHECKPOINT_HEIGHT} \
-  --checkpoint-hash ${CHECKPOINT_HASH} \
-  --max-peers 100
+ExecStart=/home/ubuntu/archivas/archivas-node \
+  -db /var/lib/archivas/seed2 \
+  -p2p 0.0.0.0:30303 \
+  -rpc 127.0.0.1:8082 \
+  -peer ${SEED1_P2P} \
+  -checkpoint-height ${CHECKPOINT_HEIGHT} \
+  -checkpoint-hash ${CHECKPOINT_HASH} \
+  -max-peers 100
 
 # Restart configuration
 Restart=always
