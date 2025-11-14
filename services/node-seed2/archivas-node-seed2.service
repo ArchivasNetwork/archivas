@@ -14,6 +14,7 @@ WorkingDirectory=/home/ubuntu/archivas
 # Node configuration
 ExecStart=/home/ubuntu/archivas/archivas-node \
   -db /var/lib/archivas/seed2 \
+  -genesis /home/ubuntu/archivas/genesis/devnet.genesis.json \
   -p2p 0.0.0.0:30303 \
   -rpc 127.0.0.1:8082 \
   -peer ${SEED1_P2P} \
