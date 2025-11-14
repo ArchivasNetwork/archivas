@@ -130,7 +130,8 @@ read -p "Choose option (1 or 2): " BOOTSTRAP_CHOICE
 if [ "$BOOTSTRAP_CHOICE" = "1" ]; then
     echo ""
     warn "Bootstrap requires SSH access to Seed1"
-    echo "Default: ubuntu@seed.archivas.ai:/root/archivas/data"
+    echo "Default: ubuntu@seed.archivas.ai:/home/ubuntu/archivas/data"
+    echo "Note: Make sure you have SSH key access or know the password"
     read -p "Press Enter to continue or Ctrl+C to abort..."
     
     bash "$PROJECT_ROOT/data/bootstrap.sh" || {

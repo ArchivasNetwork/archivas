@@ -8,7 +8,7 @@ set -euo pipefail
 SEED1_HOST="${SEED1_HOST:-seed.archivas.ai}"
 SEED1_USER="${SEED1_USER:-ubuntu}"
 SEED2_DATA_DIR="${SEED2_DATA_DIR:-/var/lib/archivas/seed2}"
-SEED1_DATA_DIR="${SEED1_DATA_DIR:-/root/archivas/data}"
+SEED1_DATA_DIR="${SEED1_DATA_DIR:-/home/ubuntu/archivas/data}"
 
 echo "=== Archivas Seed2 Bootstrap ==="
 echo "This will sync blockchain data from Seed1 to Seed2"
