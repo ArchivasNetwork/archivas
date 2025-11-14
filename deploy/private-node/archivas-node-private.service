@@ -1,0 +1,56 @@
+[Unit]
+Description=Archivas Private Node - Full Node for Local Farming
+Documentation=https://docs.archivas.ai/farmers/private-node
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# IMPORTANT: Replace YOUR_USERNAME with your actual username (e.g., ubuntu, archivas)
+User=YOUR_USERNAME
+Group=YOUR_USERNAME
+
+# IMPORTANT: Replace YOUR_USERNAME in the paths below
+WorkingDirectory=/home/YOUR_USERNAME/archivas
+
+# Node configuration - adjust paths as needed
+ExecStart=/home/YOUR_USERNAME/archivas/archivas-node \
+  --network-id archivas-devnet-v4 \
+  --db /home/YOUR_USERNAME/archivas/data \
+  --rpc 127.0.0.1:8080 \
+  --p2p 0.0.0.0:9090 \
+  --genesis /home/YOUR_USERNAME/archivas/genesis/devnet.genesis.json \
+  --no-peer-discovery \
+  --peer-whitelist seed.archivas.ai:9090 \
+  --peer-whitelist seed2.archivas.ai:9090
+
+# OPTIONAL: Add checkpoint for faster initial sync
+# Get current values from: curl -s https://seed.archivas.ai:8081/chainTip
+# Then uncomment and set:
+#  --checkpoint-height CURRENT_HEIGHT \
+#  --checkpoint-hash CURRENT_HASH
+
+# Restart configuration
+Restart=always
+RestartSec=10
+StartLimitInterval=300
+StartLimitBurst=5
+
+# Resource limits
+LimitNOFILE=65536
+MemoryMax=4G
+MemoryHigh=3G
+
+# Environment
+Environment=GOMAXPROCS=2
+Environment=GOGC=100
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=archivas-node-private
+
+[Install]
+WantedBy=multi-user.target
+

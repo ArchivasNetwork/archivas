@@ -121,6 +121,8 @@ The farmer currently requires the secp256k1 keys printed by the step above.
 
 ## Step 5: Start Farming
 
+> **💡 Want Lower Latency?** For large-scale farmers or those who want maximum reliability, consider running a [Private Node](private-node.md) on your own hardware. This gives you sub-second block submissions and eliminates dependency on public seed APIs.
+
 ```bash
 # Create logs directory
 mkdir -p ~/archivas/logs

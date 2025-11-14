@@ -8,6 +8,14 @@ Guide for farmers with significant disk space (10+ TB).
 
 If you have **40 TB of free disk space**, you can create a substantial farming operation on Archivas. This guide covers optimal strategies for maximizing your farming potential.
 
+> **🚨 Important for Large Farmers:** If you're farming at scale (10+ TB), we **strongly recommend** running your own [Private Node](private-node.md). Public seed APIs can experience timeouts under heavy load, and a private node gives you:
+> - **Sub-second block submissions** (localhost RPC)
+> - **No rate limits or 504 errors**
+> - **Complete control** over your infrastructure
+> - **Better uptime** during network congestion
+>
+> See the [Private Node Guide](private-node.md) for setup instructions.
+
 ---
 
 ## Plot Size Recommendations

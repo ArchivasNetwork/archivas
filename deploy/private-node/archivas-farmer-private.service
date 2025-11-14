@@ -1,0 +1,48 @@
+[Unit]
+Description=Archivas Private Farmer - Farming with Local Node
+Documentation=https://docs.archivas.ai/farmers/private-node
+After=archivas-node-private.service network-online.target
+Wants=archivas-node-private.service network-online.target
+
+[Service]
+Type=simple
+
+# IMPORTANT: Replace YOUR_USERNAME with your actual username (e.g., ubuntu, archivas)
+User=YOUR_USERNAME
+Group=YOUR_USERNAME
+
+# IMPORTANT: Replace YOUR_USERNAME in the paths below
+WorkingDirectory=/home/YOUR_USERNAME/archivas
+
+# Farmer configuration
+# IMPORTANT: Replace the following:
+#   - /path/to/your/plots: Your plots directory
+#   - YOUR_PRIVATE_KEY_HERE: Your farmer private key (64 hex characters)
+ExecStart=/home/YOUR_USERNAME/archivas/archivas-farmer farm \
+  --plots /path/to/your/plots \
+  --node http://127.0.0.1:8080 \
+  --farmer-privkey YOUR_PRIVATE_KEY_HERE
+
+# SECURITY NOTE: For better security, use an environment file:
+# 1. Create: /etc/archivas/farmer.env
+# 2. Add: FARMER_PRIVKEY=your_key_here
+# 3. Uncomment the line below and update ExecStart to use ${FARMER_PRIVKEY}
+# EnvironmentFile=/etc/archivas/farmer.env
+
+# Restart configuration
+Restart=always
+RestartSec=10
+StartLimitInterval=300
+StartLimitBurst=5
+
+# Resource limits
+LimitNOFILE=65536
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=archivas-farmer-private
+
+[Install]
+WantedBy=multi-user.target
+

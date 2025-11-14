@@ -35,6 +35,7 @@
 * [Creating Plots](farmers/creating-plots.md)
 * [Large-Scale Farming (10+ TB)](farmers/large-scale-farming.md)
 * [Running a Node](farmers/running-node.md)
+* [Run a Private Node](farmers/private-node.md)
 * [Earning & Rewards](farmers/earnings.md)
 * [Troubleshooting](farmers/troubleshooting.md)
 
