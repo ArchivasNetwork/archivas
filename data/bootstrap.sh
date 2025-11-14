@@ -6,7 +6,7 @@ set -euo pipefail
 # Run as: sudo bash data/bootstrap.sh
 
 SEED1_HOST="${SEED1_HOST:-seed.archivas.ai}"
-SEED1_USER="${SEED1_USER:-root}"
+SEED1_USER="${SEED1_USER:-ubuntu}"
 SEED2_DATA_DIR="${SEED2_DATA_DIR:-/var/lib/archivas/seed2}"
 SEED1_DATA_DIR="${SEED1_DATA_DIR:-/root/archivas/data}"
 
