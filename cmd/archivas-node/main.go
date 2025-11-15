@@ -1590,7 +1590,11 @@ func handleBootstrapCommand() {
 	fmt.Println("═══════════════════════════════════════════════════════════════")
 	fmt.Println()
 	fmt.Printf("  📊 Snapshot imported at height: %d\n", metadata.Height)
-	fmt.Printf("  🔗 Block hash: %s\n", metadata.BlockHash[:16]+"...")
+	blockHashDisplay := metadata.BlockHash
+	if len(blockHashDisplay) > 16 {
+		blockHashDisplay = blockHashDisplay[:16] + "..."
+	}
+	fmt.Printf("  🔗 Block hash: %s\n", blockHashDisplay)
 	fmt.Printf("  🌐 Network: %s\n", metadata.NetworkID)
 	fmt.Println()
 	fmt.Println("  📋 Next steps:")

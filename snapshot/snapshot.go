@@ -331,7 +331,11 @@ func Bootstrap(opts BootstrapOptions) (*Metadata, error) {
 	fmt.Printf("[bootstrap] Manifest info:\n")
 	fmt.Printf("  Network:  %s\n", manifest.Network)
 	fmt.Printf("  Height:   %d\n", manifest.Height)
-	fmt.Printf("  Hash:     %s\n", manifest.Hash[:16]+"...")
+	hashDisplay := manifest.Hash
+	if len(hashDisplay) > 16 {
+		hashDisplay = hashDisplay[:16] + "..."
+	}
+	fmt.Printf("  Hash:     %s\n", hashDisplay)
 	fmt.Printf("  Snapshot: %s\n", manifest.SnapshotURL)
 
 	// 2. Download snapshot to temp file
