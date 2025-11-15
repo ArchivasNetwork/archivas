@@ -34,6 +34,7 @@ type Metadata struct {
 type ExportOptions struct {
 	Height      uint64
 	OutputPath  string
+	DBPath      string // Path to database directory
 	NetworkID   string
 	Description string
 	// If true, exports full block history; if false, only recent state
@@ -52,13 +53,13 @@ func Export(db *storage.DB, blockStore *storage.BlockStorage, stateStore *storag
 	fmt.Printf("[snapshot] Exporting snapshot at height %d...\n", opts.Height)
 
 	// 1. Verify the block at the specified height exists
-	blockHash, err := blockStore.LoadBlockHash(opts.Height)
-	if err != nil {
-		return fmt.Errorf("failed to load block hash at height %d: %w", opts.Height, err)
-	}
-	if blockHash == "" {
+	if !blockStore.HasBlock(opts.Height) {
 		return fmt.Errorf("no block found at height %d", opts.Height)
 	}
+	
+	// We'll need to fetch the block hash from the node's RPC or pass it in
+	// For now, use a placeholder that will be filled from the manifest
+	blockHash := fmt.Sprintf("block-%d", opts.Height)
 
 	// 2. Create output file
 	outFile, err := os.Create(opts.OutputPath)
@@ -111,7 +112,7 @@ func Export(db *storage.DB, blockStore *storage.BlockStorage, stateStore *storag
 	// In production, we'd want to be more selective and only export
 	// what's needed to resume from the checkpoint height
 
-	dbBasePath := db.Path()
+	dbBasePath := opts.DBPath
 	fmt.Printf("[snapshot] Exporting database from %s...\n", dbBasePath)
 
 	// Walk the database directory and add all files to the tar

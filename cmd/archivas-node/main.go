@@ -1455,6 +1455,7 @@ func handleSnapshotExport() {
 	opts := snapshot.ExportOptions{
 		Height:      *height,
 		OutputPath:  *outputPath,
+		DBPath:      *dbPath,
 		NetworkID:   *networkID,
 		Description: *description,
 		FullHistory: false,
