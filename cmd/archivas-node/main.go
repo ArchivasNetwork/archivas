@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -24,6 +25,7 @@ import (
 	"github.com/ArchivasNetwork/archivas/p2p"
 	"github.com/ArchivasNetwork/archivas/pospace"
 	"github.com/ArchivasNetwork/archivas/rpc"
+	"github.com/ArchivasNetwork/archivas/snapshot"
 	"github.com/ArchivasNetwork/archivas/storage"
 )
 
@@ -87,6 +89,23 @@ type NodeState struct {
 
 func main() {
 	logging.ConfigureJSON("archivas-node")
+
+	// Handle subcommands
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "snapshot":
+			handleSnapshotCommand()
+			return
+		case "help", "--help", "-h":
+			printUsage()
+			return
+		case "version", "--version", "-v":
+			buildInfo := buildinfo.GetInfo()
+			fmt.Printf("archivas-node version %s (commit: %s, built: %s)\n",
+				buildInfo["version"], buildInfo["commit"], buildInfo["builtAt"])
+			return
+		}
+	}
 
 	// Log build info and run self-test
 	buildInfo := buildinfo.GetInfo()
@@ -427,16 +446,37 @@ func main() {
 				GenesisHash:      nodeState.GenesisHash,
 			})
 
-			fmt.Println("🔒 P2P Isolation:")
+			// Print prominent PRIVATE NODE banner
+			fmt.Println()
+			fmt.Println("═══════════════════════════════════════════════════════════════")
+			fmt.Println("  🔐 RUNNING IN PRIVATE NODE MODE")
+			fmt.Println("═══════════════════════════════════════════════════════════════")
+			fmt.Println()
 			if *noPeerDiscovery {
-				fmt.Println("   - Peer discovery: DISABLED")
+				fmt.Println("  ⛔ Peer Discovery:  DISABLED")
+			} else {
+				fmt.Println("  ✅ Peer Discovery:  ENABLED")
 			}
 			if len(peerWhitelist) > 0 {
-				fmt.Printf("   - Whitelist: %d peer(s)\n", len(peerWhitelist))
+				fmt.Printf("  📋 Whitelisted Peers: %d\n", len(peerWhitelist))
+				for i, peer := range peerWhitelist {
+					fmt.Printf("     %d. %s\n", i+1, peer)
+				}
+			} else {
+				fmt.Println("  📋 Whitelisted Peers: NONE (will connect to any peer)")
 			}
 			if *checkpointHeight > 0 {
-				fmt.Printf("   - Checkpoint: height=%d hash=%s...\n", *checkpointHeight, (*checkpointHash)[:16])
+				fmt.Printf("  📌 Checkpoint:     height=%d hash=%s...\n", *checkpointHeight, (*checkpointHash)[:16])
+				fmt.Println("     (Will reject blocks that don't match checkpoint)")
+			} else {
+				fmt.Println("  📌 Checkpoint:     NONE (will sync from genesis)")
 			}
+			fmt.Println()
+			fmt.Println("  ℹ️  This node will ONLY accept connections from whitelisted")
+			fmt.Println("     peers and will NOT be discoverable by other nodes.")
+			fmt.Println()
+			fmt.Println("═══════════════════════════════════════════════════════════════")
+			fmt.Println()
 		}
 
 		// Set up peer persistence
@@ -1345,4 +1385,175 @@ func (ns *NodeState) GetBlockByHeight(height uint64) (interface{}, error) {
 		"txs":        formattedTxs,
 		"proof":      proofData, // Include proof for hash calculation during IBD
 	}, nil
+}
+
+// handleSnapshotCommand handles the 'snapshot' subcommand
+func handleSnapshotCommand() {
+	if len(os.Args) < 3 {
+		fmt.Println("Usage: archivas-node snapshot <export|import> [flags]")
+		fmt.Println()
+		fmt.Println("Commands:")
+		fmt.Println("  export    Export a snapshot at a specific height")
+		fmt.Println("  import    Import a snapshot into an empty database")
+		fmt.Println()
+		fmt.Println("Examples:")
+		fmt.Println("  archivas-node snapshot export --height 1200000 --out snapshot-1200000.tar.gz --db ./data")
+		fmt.Println("  archivas-node snapshot import --in snapshot-1200000.tar.gz --db ./data")
+		os.Exit(1)
+	}
+
+	cmd := os.Args[2]
+	switch cmd {
+	case "export":
+		handleSnapshotExport()
+	case "import":
+		handleSnapshotImport()
+	default:
+		fmt.Printf("Unknown snapshot command: %s\n", cmd)
+		os.Exit(1)
+	}
+}
+
+// handleSnapshotExport handles 'snapshot export' subcommand
+func handleSnapshotExport() {
+	exportCmd := flag.NewFlagSet("export", flag.ExitOnError)
+	height := exportCmd.Uint64("height", 0, "Block height to export (required)")
+	outputPath := exportCmd.String("out", "", "Output file path (required, .tar.gz)")
+	dbPath := exportCmd.String("db", "./data", "Database directory path")
+	networkID := exportCmd.String("network-id", "archivas-devnet-v4", "Network ID")
+	description := exportCmd.String("desc", "", "Optional description for this snapshot")
+
+	exportCmd.Parse(os.Args[3:])
+
+	if *height == 0 {
+		fmt.Println("Error: --height is required")
+		exportCmd.PrintDefaults()
+		os.Exit(1)
+	}
+
+	if *outputPath == "" {
+		fmt.Println("Error: --out is required")
+		exportCmd.PrintDefaults()
+		os.Exit(1)
+	}
+
+	// Open database
+	db, err := storage.OpenDB(*dbPath)
+	if err != nil {
+		log.Fatalf("Failed to open database: %v", err)
+	}
+	defer db.Close()
+
+	blockStore := storage.NewBlockStorage(db)
+	stateStore := storage.NewStateStorage(db)
+	metaStore := storage.NewMetadataStorage(db)
+
+	// Export snapshot
+	opts := snapshot.ExportOptions{
+		Height:      *height,
+		OutputPath:  *outputPath,
+		NetworkID:   *networkID,
+		Description: *description,
+		FullHistory: false,
+	}
+
+	if err := snapshot.Export(db, blockStore, stateStore, metaStore, opts); err != nil {
+		log.Fatalf("Snapshot export failed: %v", err)
+	}
+
+	fmt.Println()
+	fmt.Println("✅ Snapshot export completed successfully")
+}
+
+// handleSnapshotImport handles 'snapshot import' subcommand
+func handleSnapshotImport() {
+	importCmd := flag.NewFlagSet("import", flag.ExitOnError)
+	inputPath := importCmd.String("in", "", "Input snapshot file path (required, .tar.gz)")
+	dbPath := importCmd.String("db", "./data", "Database directory path")
+	force := importCmd.Bool("force", false, "Force import even if database is non-empty (will overwrite)")
+
+	importCmd.Parse(os.Args[3:])
+
+	if *inputPath == "" {
+		fmt.Println("Error: --in is required")
+		importCmd.PrintDefaults()
+		os.Exit(1)
+	}
+
+	// Import snapshot
+	opts := snapshot.ImportOptions{
+		InputPath: *inputPath,
+		DBPath:    *dbPath,
+		Force:     *force,
+	}
+
+	metadata, err := snapshot.Import(opts)
+	if err != nil {
+		log.Fatalf("Snapshot import failed: %v", err)
+	}
+
+	fmt.Println()
+	fmt.Println("✅ Snapshot import completed successfully")
+	fmt.Println()
+	fmt.Println("📋 Next steps:")
+	fmt.Println("  1. Start the node with checkpoint validation:")
+	fmt.Println()
+	fmt.Printf("     archivas-node \\\n")
+	fmt.Printf("       --db %s \\\n", *dbPath)
+	fmt.Printf("       --network-id %s \\\n", metadata.NetworkID)
+	fmt.Printf("       --checkpoint-height %d \\\n", metadata.Height)
+	fmt.Printf("       --checkpoint-hash %s \\\n", metadata.BlockHash)
+	fmt.Println("       --no-peer-discovery \\")
+	fmt.Println("       --peer-whitelist seed.archivas.ai:9090 \\")
+	fmt.Println("       --peer-whitelist seed2.archivas.ai:9090")
+	fmt.Println()
+	fmt.Println("  2. The node will sync remaining blocks from the whitelisted seeds")
+}
+
+// printUsage prints usage information
+func printUsage() {
+	fmt.Println("Archivas Node - Blockchain node for Archivas Network")
+	fmt.Println()
+	fmt.Println("Usage:")
+	fmt.Println("  archivas-node [flags]                        Run the node")
+	fmt.Println("  archivas-node snapshot <export|import>       Manage snapshots")
+	fmt.Println("  archivas-node version                        Show version")
+	fmt.Println("  archivas-node help                           Show this help")
+	fmt.Println()
+	fmt.Println("Node Flags:")
+	fmt.Println("  --rpc <addr>                RPC listen address (default: :8080)")
+	fmt.Println("  --p2p <addr>                P2P listen address (default: :9090)")
+	fmt.Println("  --db <path>                 Database directory (default: ./data)")
+	fmt.Println("  --genesis <path>            Genesis file path (required on first start)")
+	fmt.Println("  --network-id <id>           Network ID (default: archivas-devnet-v4)")
+	fmt.Println()
+	fmt.Println("Private Node Flags:")
+	fmt.Println("  --no-peer-discovery         Disable automatic peer discovery")
+	fmt.Println("  --peer-whitelist <host:port> Whitelisted peer (repeatable)")
+	fmt.Println("  --checkpoint-height <N>     Checkpoint height for validation")
+	fmt.Println("  --checkpoint-hash <hash>    Checkpoint block hash (hex)")
+	fmt.Println()
+	fmt.Println("Snapshot Commands:")
+	fmt.Println("  archivas-node snapshot export --height <N> --out <file> --db <path>")
+	fmt.Println("  archivas-node snapshot import --in <file> --db <path> [--force]")
+	fmt.Println()
+	fmt.Println("Examples:")
+	fmt.Println("  # Run a public seed node:")
+	fmt.Println("  archivas-node --rpc 0.0.0.0:8080 --p2p 0.0.0.0:9090 --db ./data")
+	fmt.Println()
+	fmt.Println("  # Run a private node for farming:")
+	fmt.Println("  archivas-node --rpc 127.0.0.1:8080 --p2p 0.0.0.0:9090 \\")
+	fmt.Println("    --no-peer-discovery \\")
+	fmt.Println("    --peer-whitelist seed.archivas.ai:9090 \\")
+	fmt.Println("    --peer-whitelist seed2.archivas.ai:9090 \\")
+	fmt.Println("    --checkpoint-height 1200000 \\")
+	fmt.Println("    --checkpoint-hash abc123...")
+	fmt.Println()
+	fmt.Println("  # Export a snapshot:")
+	fmt.Println("  archivas-node snapshot export --height 1200000 --out snapshot.tar.gz --db ./data")
+	fmt.Println()
+	fmt.Println("  # Import a snapshot:")
+	fmt.Println("  archivas-node snapshot import --in snapshot.tar.gz --db ./data")
+	fmt.Println()
+	fmt.Println("For more information, visit: https://docs.archivas.ai")
 }

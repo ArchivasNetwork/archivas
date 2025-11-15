@@ -1,82 +1,299 @@
 package snapshot
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
+	"archive/tar"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"time"
+
+	"github.com/ArchivasNetwork/archivas/storage"
 )
 
-// SnapshotMetadata contains snapshot information
-type SnapshotMetadata struct {
-	Height    uint64 `json:"height"`
-	StateRoot string `json:"stateRoot"`
-	CreatedAt string `json:"createdAt"` // RFC3339
-	File      string `json:"file"`      // Filename
-	SHA256    string `json:"sha256"`    // Hash for verification
-	Size      int64  `json:"size"`      // File size in bytes
+// Metadata holds information about a snapshot
+type Metadata struct {
+	Version       string    `json:"version"`
+	NetworkID     string    `json:"network_id"`
+	Height        uint64    `json:"height"`
+	BlockHash     string    `json:"block_hash"`
+	ExportedAt    time.Time `json:"exported_at"`
+	ExportedBy    string    `json:"exported_by"`
+	Description   string    `json:"description,omitempty"`
+	DataDirs      []string  `json:"data_dirs"`      // Which DB directories are included
+	SnapshotType  string    `json:"snapshot_type"`  // "full" or "state-only"
+	TotalSizeBytes int64    `json:"total_size_bytes"`
 }
 
-// CreateSnapshot creates a new state snapshot
-func CreateSnapshot(height uint64, outputDir string) (*SnapshotMetadata, error) {
-	now := time.Now()
-	
-	// Create snapshot metadata
-	stateRoot := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("state-%d", height))))[:16]
-	filename := fmt.Sprintf("state-%d-%s.snap", height, stateRoot)
-	
-	meta := &SnapshotMetadata{
-		Height:    height,
-		StateRoot: stateRoot,
-		CreatedAt: now.Format(time.RFC3339),
-		File:      filename,
-		SHA256:    "",
-		Size:      0,
+// ExportOptions configures snapshot export
+type ExportOptions struct {
+	Height      uint64
+	OutputPath  string
+	NetworkID   string
+	Description string
+	// If true, exports full block history; if false, only recent state
+	FullHistory bool
+}
+
+// ImportOptions configures snapshot import
+type ImportOptions struct {
+	InputPath string
+	DBPath    string
+	Force     bool // Force import even if DB is non-empty
+}
+
+// Export creates a snapshot of the node state at a given height
+func Export(db *storage.DB, blockStore *storage.BlockStorage, stateStore *storage.StateStorage, metaStore *storage.MetadataStorage, opts ExportOptions) error {
+	fmt.Printf("[snapshot] Exporting snapshot at height %d...\n", opts.Height)
+
+	// 1. Verify the block at the specified height exists
+	blockHash, err := blockStore.LoadBlockHash(opts.Height)
+	if err != nil {
+		return fmt.Errorf("failed to load block hash at height %d: %w", opts.Height, err)
 	}
-	
-	// Would create actual snapshot file here
-	// For now, just metadata
-	
-	return meta, nil
+	if blockHash == "" {
+		return fmt.Errorf("no block found at height %d", opts.Height)
+	}
+
+	// 2. Create output file
+	outFile, err := os.Create(opts.OutputPath)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %w", err)
+	}
+	defer outFile.Close()
+
+	gzWriter := gzip.NewWriter(outFile)
+	defer gzWriter.Close()
+
+	tarWriter := tar.NewWriter(gzWriter)
+	defer tarWriter.Close()
+
+	// 3. Create metadata
+	metadata := Metadata{
+		Version:       "1.0",
+		NetworkID:     opts.NetworkID,
+		Height:        opts.Height,
+		BlockHash:     blockHash,
+		ExportedAt:    time.Now(),
+		ExportedBy:    "archivas-node",
+		Description:   opts.Description,
+		DataDirs:      []string{"blocks", "state", "meta"},
+		SnapshotType:  "state-only",
+		TotalSizeBytes: 0, // Will be calculated
+	}
+
+	metadataJSON, err := json.MarshalIndent(metadata, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal metadata: %w", err)
+	}
+
+	// Write metadata to tar
+	metadataHeader := &tar.Header{
+		Name:    "snapshot.json",
+		Mode:    0644,
+		Size:    int64(len(metadataJSON)),
+		ModTime: time.Now(),
+	}
+	if err := tarWriter.WriteHeader(metadataHeader); err != nil {
+		return fmt.Errorf("failed to write metadata header: %w", err)
+	}
+	if _, err := tarWriter.Write(metadataJSON); err != nil {
+		return fmt.Errorf("failed to write metadata: %w", err)
+	}
+
+	// 4. Export the database directories
+	// For now, we'll export the entire DB directory structure
+	// In production, we'd want to be more selective and only export
+	// what's needed to resume from the checkpoint height
+
+	dbBasePath := db.Path()
+	fmt.Printf("[snapshot] Exporting database from %s...\n", dbBasePath)
+
+	// Walk the database directory and add all files to the tar
+	var totalBytes int64
+	err = filepath.Walk(dbBasePath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip the root directory itself
+		if path == dbBasePath {
+			return nil
+		}
+
+		// Get relative path
+		relPath, err := filepath.Rel(dbBasePath, path)
+		if err != nil {
+			return fmt.Errorf("failed to get relative path: %w", err)
+		}
+
+		// Create tar header
+		header, err := tar.FileInfoHeader(info, "")
+		if err != nil {
+			return fmt.Errorf("failed to create tar header for %s: %w", path, err)
+		}
+		header.Name = filepath.Join("data", relPath)
+
+		if err := tarWriter.WriteHeader(header); err != nil {
+			return fmt.Errorf("failed to write tar header for %s: %w", path, err)
+		}
+
+		// If it's a file (not a directory), write its contents
+		if !info.IsDir() {
+			file, err := os.Open(path)
+			if err != nil {
+				return fmt.Errorf("failed to open file %s: %w", path, err)
+			}
+			defer file.Close()
+
+			n, err := io.Copy(tarWriter, file)
+			if err != nil {
+				return fmt.Errorf("failed to copy file %s: %w", path, err)
+			}
+			totalBytes += n
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to export database: %w", err)
+	}
+
+	fmt.Printf("[snapshot] ✓ Exported %d bytes\n", totalBytes)
+	fmt.Printf("[snapshot] ✓ Snapshot saved to: %s\n", opts.OutputPath)
+	fmt.Printf("[snapshot] Metadata: height=%d hash=%s network=%s\n",
+		metadata.Height, metadata.BlockHash, metadata.NetworkID)
+
+	return nil
 }
 
-// VerifySnapshot verifies snapshot integrity
-func VerifySnapshot(path string, expectedSHA256 string) (bool, error) {
-	data, err := os.ReadFile(path)
+// Import restores a snapshot into the node database
+func Import(opts ImportOptions) (*Metadata, error) {
+	fmt.Printf("[snapshot] Importing snapshot from %s...\n", opts.InputPath)
+
+	// 1. Check if DB directory is empty (unless --force is set)
+	if !opts.Force {
+		empty, err := isDirEmpty(opts.DBPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check DB directory: %w", err)
+		}
+		if !empty {
+			return nil, fmt.Errorf("database directory %s is not empty; use --force to overwrite", opts.DBPath)
+		}
+	}
+
+	// 2. Open the snapshot file
+	inFile, err := os.Open(opts.InputPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open snapshot file: %w", err)
+	}
+	defer inFile.Close()
+
+	gzReader, err := gzip.NewReader(inFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create gzip reader: %w", err)
+	}
+	defer gzReader.Close()
+
+	tarReader := tar.NewReader(gzReader)
+
+	// 3. Read and parse metadata
+	header, err := tarReader.Next()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read first tar entry: %w", err)
+	}
+
+	if header.Name != "snapshot.json" {
+		return nil, fmt.Errorf("expected snapshot.json as first entry, got %s", header.Name)
+	}
+
+	metadataJSON, err := io.ReadAll(tarReader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read metadata: %w", err)
+	}
+
+	var metadata Metadata
+	if err := json.Unmarshal(metadataJSON, &metadata); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
+	}
+
+	fmt.Printf("[snapshot] Snapshot info:\n")
+	fmt.Printf("  Network:     %s\n", metadata.NetworkID)
+	fmt.Printf("  Height:      %d\n", metadata.Height)
+	fmt.Printf("  Block Hash:  %s\n", metadata.BlockHash)
+	fmt.Printf("  Exported At: %s\n", metadata.ExportedAt.Format(time.RFC3339))
+	fmt.Printf("  Type:        %s\n", metadata.SnapshotType)
+
+	// 4. Create DB directory if it doesn't exist
+	if err := os.MkdirAll(opts.DBPath, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create DB directory: %w", err)
+	}
+
+	// 5. Extract all files from the tar
+	var totalBytes int64
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to read tar entry: %w", err)
+		}
+
+		// Construct target path (strip "data/" prefix)
+		targetPath := filepath.Join(opts.DBPath, filepath.Clean(header.Name)[5:]) // Remove "data/" prefix
+
+		switch header.Typeflag {
+		case tar.TypeDir:
+			// Create directory
+			if err := os.MkdirAll(targetPath, 0755); err != nil {
+				return nil, fmt.Errorf("failed to create directory %s: %w", targetPath, err)
+			}
+
+		case tar.TypeReg:
+			// Create parent directory if needed
+			if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+				return nil, fmt.Errorf("failed to create parent directory for %s: %w", targetPath, err)
+			}
+
+			// Create and write file
+			outFile, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(header.Mode))
+			if err != nil {
+				return nil, fmt.Errorf("failed to create file %s: %w", targetPath, err)
+			}
+
+			n, err := io.Copy(outFile, tarReader)
+			outFile.Close()
+			if err != nil {
+				return nil, fmt.Errorf("failed to write file %s: %w", targetPath, err)
+			}
+			totalBytes += n
+		}
+	}
+
+	fmt.Printf("[snapshot] ✓ Imported %d bytes\n", totalBytes)
+	fmt.Printf("[snapshot] ✓ Database restored to: %s\n", opts.DBPath)
+	fmt.Printf("[snapshot] You can now start the node with:\n")
+	fmt.Printf("  --checkpoint-height %d \\\n", metadata.Height)
+	fmt.Printf("  --checkpoint-hash %s\n", metadata.BlockHash)
+
+	return &metadata, nil
+}
+
+// isDirEmpty checks if a directory is empty or doesn't exist
+func isDirEmpty(path string) (bool, error) {
+	// If directory doesn't exist, consider it "empty"
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return true, nil
+	}
+
+	entries, err := os.ReadDir(path)
 	if err != nil {
 		return false, err
 	}
-	
-	hash := sha256.Sum256(data)
-	actualSHA256 := hex.EncodeToString(hash[:])
-	
-	return actualSHA256 == expectedSHA256, nil
-}
 
-// SaveMetadata saves snapshot metadata to JSON
-func SaveMetadata(meta *SnapshotMetadata, path string) error {
-	data, err := json.MarshalIndent(meta, "", "  ")
-	if err != nil {
-		return err
-	}
-	
-	return os.WriteFile(path, data, 0644)
+	return len(entries) == 0, nil
 }
-
-// LoadMetadata loads snapshot metadata from JSON
-func LoadMetadata(path string) (*SnapshotMetadata, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	
-	var meta SnapshotMetadata
-	if err := json.Unmarshal(data, &meta); err != nil {
-		return nil, err
-	}
-	
-	return &meta, nil
-}
-
