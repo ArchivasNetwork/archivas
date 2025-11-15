@@ -10,7 +10,7 @@ NODE_RPC="${NODE_RPC:-http://127.0.0.1:8082}"
 NODE_BINARY="${NODE_BINARY:-/home/ubuntu/archivas/archivas-node}"
 DB_PATH="${DB_PATH:-/home/ubuntu/archivas/data}"
 SNAPSHOT_DIR="${SNAPSHOT_DIR:-/srv/archivas-snapshots/devnet}"
-SNAPSHOT_BASE_URL="${SNAPSHOT_BASE_URL:-https://snapshots.archivas.ai/devnet}"
+SNAPSHOT_BASE_URL="${SNAPSHOT_BASE_URL:-https://seed2.archivas.ai/devnet}"
 NETWORK_ID="${NETWORK_ID:-archivas-devnet-v4}"
 SAFE_BLOCKS_BEHIND="${SAFE_BLOCKS_BEHIND:-5000}"  # Export snapshot this many blocks behind tip
 

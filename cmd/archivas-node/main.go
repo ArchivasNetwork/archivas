@@ -1557,9 +1557,9 @@ func handleBootstrapCommand() {
 		// Map network to default snapshot URL
 		switch *network {
 		case "devnet":
-			manifestURL = "https://snapshots.archivas.ai/devnet/latest.json"
+			manifestURL = "https://seed2.archivas.ai/devnet/latest.json"
 		case "mainnet":
-			manifestURL = "https://snapshots.archivas.ai/mainnet/latest.json"
+			manifestURL = "https://seed2.archivas.ai/mainnet/latest.json"
 		default:
 			fmt.Printf("Error: Unknown network '%s'. Use --snapshot-url to specify a custom URL.\n", *network)
 			os.Exit(1)
