@@ -137,23 +137,38 @@ Start the node with private node configuration:
 - `--no-peer-discovery`: Disable automatic peer discovery
 - `--peer-whitelist`: Only connect to trusted seeds
 
-**Optional: Use a checkpoint for faster sync**
+**🚀 Recommended: Use Snapshot Bootstrap for Instant Sync**
 
-To skip syncing from genesis, use a recent checkpoint:
+Instead of syncing from genesis (which can take hours or days), use the snapshot bootstrap feature to start at a recent height in minutes:
 
 ```bash
-# Get the latest checkpoint from a seed
-curl -s https://seed.archivas.ai:8081/chainTip
+# Download and import a recent snapshot from Seed2
+./archivas-node bootstrap --network devnet
 
-# Example output:
-# {"height":"1200000","hash":"abc123...","difficulty":"1000000"}
-
-# Add checkpoint flags:
-./archivas-node \
-  ... (other flags) \
-  --checkpoint-height 1200000 \
-  --checkpoint-hash abc123...
+# This will:
+# 1. Download ~500MB snapshot from seed2.archivas.ai
+# 2. Verify the checksum
+# 3. Extract the database to ~/archivas/data
+# 4. Start your node at a recent height (e.g., 1.2M blocks)
 ```
+
+**After bootstrap completes**, start your node normally:
+
+```bash
+./archivas-node \
+  --network-id archivas-devnet-v4 \
+  --db ~/archivas/data \
+  --rpc 127.0.0.1:8080 \
+  --p2p 0.0.0.0:9090 \
+  --genesis ~/archivas/genesis/devnet.genesis.json \
+  --no-peer-discovery \
+  --peer-whitelist seed.archivas.ai:9090 \
+  --peer-whitelist seed2.archivas.ai:9090
+```
+
+Your node will resume syncing from the snapshot height instead of starting from block 0!
+
+**Time saved:** ⏱️ From **hours/days** to **minutes**
 
 #### Step 3: Verify Node is Syncing
 
