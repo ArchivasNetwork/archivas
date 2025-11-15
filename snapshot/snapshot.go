@@ -3,9 +3,12 @@ package snapshot
 import (
 	"archive/tar"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"time"
@@ -296,4 +299,126 @@ func isDirEmpty(path string) (bool, error) {
 	}
 
 	return len(entries) == 0, nil
+}
+
+// Manifest represents a snapshot manifest from a URL
+type Manifest struct {
+	Network       string `json:"network"`
+	Height        uint64 `json:"height"`
+	Hash          string `json:"hash"`
+	SnapshotURL   string `json:"snapshot_url"`
+	ChecksumSHA256 string `json:"checksum_sha256"`
+}
+
+// BootstrapOptions configures automated snapshot bootstrap
+type BootstrapOptions struct {
+	ManifestURL string
+	DBPath      string
+	Force       bool
+}
+
+// Bootstrap downloads a snapshot from a manifest URL, verifies it, and imports it
+func Bootstrap(opts BootstrapOptions) (*Metadata, error) {
+	fmt.Printf("[bootstrap] Fetching manifest from %s...\n", opts.ManifestURL)
+
+	// 1. Download manifest
+	manifest, err := fetchManifest(opts.ManifestURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch manifest: %w", err)
+	}
+
+	fmt.Printf("[bootstrap] Manifest info:\n")
+	fmt.Printf("  Network:  %s\n", manifest.Network)
+	fmt.Printf("  Height:   %d\n", manifest.Height)
+	fmt.Printf("  Hash:     %s\n", manifest.Hash[:16]+"...")
+	fmt.Printf("  Snapshot: %s\n", manifest.SnapshotURL)
+
+	// 2. Download snapshot to temp file
+	tempFile, err := os.CreateTemp("", "archivas-snapshot-*.tar.gz")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer os.Remove(tempFile.Name())
+	defer tempFile.Close()
+
+	fmt.Printf("[bootstrap] Downloading snapshot...\n")
+	checksum, err := downloadFile(manifest.SnapshotURL, tempFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download snapshot: %w", err)
+	}
+
+	// 3. Verify checksum
+	if manifest.ChecksumSHA256 != "" {
+		if checksum != manifest.ChecksumSHA256 {
+			return nil, fmt.Errorf("checksum mismatch: expected %s, got %s", manifest.ChecksumSHA256, checksum)
+		}
+		fmt.Printf("[bootstrap] ✓ Checksum verified: %s\n", checksum[:16]+"...")
+	} else {
+		fmt.Printf("[bootstrap] ⚠️  No checksum in manifest, skipping verification\n")
+	}
+
+	// 4. Import snapshot
+	fmt.Printf("[bootstrap] Importing snapshot...\n")
+	tempFile.Close() // Close before import reads it
+
+	importOpts := ImportOptions{
+		InputPath: tempFile.Name(),
+		DBPath:    opts.DBPath,
+		Force:     opts.Force,
+	}
+
+	metadata, err := Import(importOpts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to import snapshot: %w", err)
+	}
+
+	fmt.Printf("[bootstrap] ✓ Bootstrap complete!\n")
+	return metadata, nil
+}
+
+// fetchManifest downloads and parses a manifest JSON
+func fetchManifest(url string) (*Manifest, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
+	}
+
+	var manifest Manifest
+	if err := json.NewDecoder(resp.Body).Decode(&manifest); err != nil {
+		return nil, fmt.Errorf("failed to parse manifest: %w", err)
+	}
+
+	return &manifest, nil
+}
+
+// downloadFile downloads a file from a URL and returns its SHA256 checksum
+func downloadFile(url string, dest *os.File) (string, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
+	}
+
+	// Calculate SHA256 while downloading
+	hasher := sha256.New()
+	writer := io.MultiWriter(dest, hasher)
+
+	written, err := io.Copy(writer, resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	checksum := hex.EncodeToString(hasher.Sum(nil))
+	fmt.Printf("[bootstrap] Downloaded %d bytes\n", written)
+
+	return checksum, nil
 }

@@ -2,15 +2,47 @@
 
 This guide explains how to run your own **private Archivas node** for farming or validation, using snapshot-based fast-sync to avoid historical corruption issues.
 
+## Quick Start (Recommended)
+
+**For most farmers**, you can bootstrap a private node with a single command:
+
+```bash
+# Download and build the node
+git clone https://github.com/ArchivasNetwork/archivas.git
+cd archivas
+go build -o archivas-node ./cmd/archivas-node
+
+# Bootstrap from the latest devnet snapshot
+./archivas-node bootstrap \
+  --network devnet \
+  --db ~/archivas/data
+
+# The command will:
+# 1. Download the latest snapshot (~2GB)
+# 2. Verify the checksum
+# 3. Import it to your database
+# 4. Display the command to start your private node
+```
+
+After bootstrap completes, copy the displayed `archivas-node` start command and run it. Then point your farmer to `http://127.0.0.1:8080`.
+
+**That's it!** Skip to [Connect Your Farmer](#step-5-connect-your-farmer) below.
+
+For advanced users who want manual control, read the detailed sections below.
+
+---
+
 ## Table of Contents
 
+- [Quick Start (Recommended)](#quick-start-recommended)
 - [Why Run a Private Node?](#why-run-a-private-node)
 - [Overview](#overview)
 - [Prerequisites](#prerequisites)
-- [Step 1: Export a Snapshot (On Seed Server)](#step-1-export-a-snapshot-on-seed-server)
-- [Step 2: Transfer the Snapshot](#step-2-transfer-the-snapshot)
-- [Step 3: Import the Snapshot (On Private Node)](#step-3-import-the-snapshot-on-private-node)
-- [Step 4: Start Your Private Node](#step-4-start-your-private-node)
+- [Manual Setup (Advanced)](#manual-setup-advanced)
+  - [Step 1: Export a Snapshot (On Seed Server)](#step-1-export-a-snapshot-on-seed-server)
+  - [Step 2: Transfer the Snapshot](#step-2-transfer-the-snapshot)
+  - [Step 3: Import the Snapshot (On Private Node)](#step-3-import-the-snapshot-on-private-node)
+  - [Step 4: Start Your Private Node](#step-4-start-your-private-node)
 - [Step 5: Connect Your Farmer](#step-5-connect-your-farmer)
 - [Monitoring and Verification](#monitoring-and-verification)
 - [Troubleshooting](#troubleshooting)
@@ -61,9 +93,13 @@ The workflow is:
 
 ---
 
-## Step 1: Export a Snapshot (On Seed Server)
+## Manual Setup (Advanced)
 
-**Note**: This step is typically performed by the Archivas team on **Seed2** to create a trusted snapshot. Community members can use the provided snapshot files.
+The following sections describe the manual snapshot export, transfer, and import process. **Most users should use the Quick Start above instead.**
+
+### Step 1: Export a Snapshot (On Seed Server)
+
+**Note**: This step is typically performed by the Archivas team on **Seed2** to create a trusted snapshot. Community members can use the provided snapshot files via `archivas-node bootstrap`.
 
 If you have access to Seed2 (or another trusted node at the latest height):
 
@@ -104,7 +140,7 @@ The snapshot file `archivas-snapshot-XXXXXX.tar.gz` is now ready for distributio
 
 ---
 
-## Step 2: Transfer the Snapshot
+### Step 2: Transfer the Snapshot
 
 Transfer the snapshot file to your private server:
 
@@ -128,7 +164,7 @@ curl -O https://snapshots.archivas.ai/archivas-snapshot-1200000.tar.gz
 
 ---
 
-## Step 3: Import the Snapshot (On Private Node)
+### Step 3: Import the Snapshot (On Private Node)
 
 On your **private server**:
 
@@ -172,11 +208,11 @@ mkdir -p ~/archivas/data
 
 ---
 
-## Step 4: Start Your Private Node
+### Step 4: Start Your Private Node
 
 Now start the node with the **private node profile**:
 
-### Option A: Manual Start (for testing)
+#### Option A: Manual Start (for testing)
 
 ```bash
 cd ~/archivas
@@ -226,7 +262,7 @@ The node will now:
 2. Sync blocks from height 1200001 to the current tip (~10k blocks, takes 5-10 minutes)
 3. Start serving RPC on `http://127.0.0.1:8080`
 
-### Option B: Systemd Service (for production)
+#### Option B: Systemd Service (for production)
 
 For a persistent, auto-starting node, create a systemd service:
 

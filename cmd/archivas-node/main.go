@@ -96,6 +96,9 @@ func main() {
 		case "snapshot":
 			handleSnapshotCommand()
 			return
+		case "bootstrap":
+			handleBootstrapCommand()
+			return
 		case "help", "--help", "-h":
 			printUsage()
 			return
@@ -1510,12 +1513,115 @@ func handleSnapshotImport() {
 	fmt.Println("  2. The node will sync remaining blocks from the whitelisted seeds")
 }
 
+// handleBootstrapCommand handles 'bootstrap' subcommand for automated setup
+func handleBootstrapCommand() {
+	if len(os.Args) < 3 || (os.Args[2] != "--help" && os.Args[2] != "-h" && len(os.Args) < 4) {
+		fmt.Println("Usage: archivas-node bootstrap [flags]")
+		fmt.Println()
+		fmt.Println("Bootstrap downloads a snapshot and starts a private node in one command.")
+		fmt.Println()
+		fmt.Println("Flags:")
+		fmt.Println("  --network <id>           Network to bootstrap (e.g., 'devnet', 'mainnet')")
+		fmt.Println("  --snapshot-url <url>     URL to snapshot manifest JSON (default: auto-detects from network)")
+		fmt.Println("  --db <path>              Database directory path (default: ./data)")
+		fmt.Println("  --force                  Force overwrite if database exists")
+		fmt.Println()
+		fmt.Println("Examples:")
+		fmt.Println("  # Bootstrap a devnet private node:")
+		fmt.Println("  archivas-node bootstrap --network devnet --db /var/lib/archivas")
+		fmt.Println()
+		fmt.Println("  # Bootstrap with custom snapshot URL:")
+		fmt.Println("  archivas-node bootstrap \\")
+		fmt.Println("    --snapshot-url https://snapshots.archivas.ai/devnet/latest.json \\")
+		fmt.Println("    --db /var/lib/archivas")
+		os.Exit(1)
+	}
+
+	bootstrapCmd := flag.NewFlagSet("bootstrap", flag.ExitOnError)
+	network := bootstrapCmd.String("network", "", "Network ID (devnet, mainnet)")
+	snapshotURL := bootstrapCmd.String("snapshot-url", "", "Snapshot manifest URL (auto-detects if not specified)")
+	dbPath := bootstrapCmd.String("db", "./data", "Database directory path")
+	force := bootstrapCmd.Bool("force", false, "Force overwrite if database exists")
+
+	bootstrapCmd.Parse(os.Args[2:])
+
+	// Auto-detect snapshot URL from network if not specified
+	manifestURL := *snapshotURL
+	if manifestURL == "" {
+		if *network == "" {
+			fmt.Println("Error: Either --network or --snapshot-url must be specified")
+			os.Exit(1)
+		}
+
+		// Map network to default snapshot URL
+		switch *network {
+		case "devnet":
+			manifestURL = "https://snapshots.archivas.ai/devnet/latest.json"
+		case "mainnet":
+			manifestURL = "https://snapshots.archivas.ai/mainnet/latest.json"
+		default:
+			fmt.Printf("Error: Unknown network '%s'. Use --snapshot-url to specify a custom URL.\n", *network)
+			os.Exit(1)
+		}
+	}
+
+	fmt.Println()
+	fmt.Println("═══════════════════════════════════════════════════════════════")
+	fmt.Println("  🚀 ARCHIVAS NODE BOOTSTRAP")
+	fmt.Println("═══════════════════════════════════════════════════════════════")
+	fmt.Println()
+
+	// Bootstrap (download + import snapshot)
+	opts := snapshot.BootstrapOptions{
+		ManifestURL: manifestURL,
+		DBPath:      *dbPath,
+		Force:       *force,
+	}
+
+	metadata, err := snapshot.Bootstrap(opts)
+	if err != nil {
+		log.Fatalf("Bootstrap failed: %v", err)
+	}
+
+	fmt.Println()
+	fmt.Println("═══════════════════════════════════════════════════════════════")
+	fmt.Println("  ✅ BOOTSTRAP COMPLETE")
+	fmt.Println("═══════════════════════════════════════════════════════════════")
+	fmt.Println()
+	fmt.Printf("  📊 Snapshot imported at height: %d\n", metadata.Height)
+	fmt.Printf("  🔗 Block hash: %s\n", metadata.BlockHash[:16]+"...")
+	fmt.Printf("  🌐 Network: %s\n", metadata.NetworkID)
+	fmt.Println()
+	fmt.Println("  📋 Next steps:")
+	fmt.Println()
+	fmt.Println("  1. Start your private node:")
+	fmt.Println()
+	fmt.Printf("     archivas-node \\\n")
+	fmt.Printf("       --db %s \\\n", *dbPath)
+	fmt.Printf("       --network-id %s \\\n", metadata.NetworkID)
+	fmt.Println("       --rpc 127.0.0.1:8080 \\")
+	fmt.Println("       --p2p 0.0.0.0:9090 \\")
+	fmt.Println("       --no-peer-discovery \\")
+	fmt.Println("       --peer-whitelist seed.archivas.ai:9090 \\")
+	fmt.Println("       --peer-whitelist seed2.archivas.ai:9090 \\")
+	fmt.Printf("       --checkpoint-height %d \\\n", metadata.Height)
+	fmt.Printf("       --checkpoint-hash %s\n", metadata.BlockHash)
+	fmt.Println()
+	fmt.Println("  2. Or use the systemd service (see docs/PRIVATE_NODE_SETUP.md)")
+	fmt.Println()
+	fmt.Println("  3. Point your farmer to http://127.0.0.1:8080")
+	fmt.Println()
+	fmt.Println("═══════════════════════════════════════════════════════════════")
+	fmt.Println()
+}
+
 // printUsage prints usage information
 func printUsage() {
 	fmt.Println("Archivas Node - Blockchain node for Archivas Network")
 	fmt.Println()
 	fmt.Println("Usage:")
 	fmt.Println("  archivas-node [flags]                        Run the node")
+	fmt.Println("  archivas-node bootstrap [flags]              Bootstrap from snapshot (one-command setup)")
 	fmt.Println("  archivas-node snapshot <export|import>       Manage snapshots")
 	fmt.Println("  archivas-node version                        Show version")
 	fmt.Println("  archivas-node help                           Show this help")
