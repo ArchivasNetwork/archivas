@@ -6,7 +6,7 @@
 set -e
 
 # Configuration
-NODE_RPC="${NODE_RPC:-http://127.0.0.1:8080}"
+NODE_RPC="${NODE_RPC:-http://127.0.0.1:8082}"
 NODE_BINARY="${NODE_BINARY:-/home/ubuntu/archivas/archivas-node}"
 DB_PATH="${DB_PATH:-/home/ubuntu/archivas/data}"
 SNAPSHOT_DIR="${SNAPSHOT_DIR:-/srv/archivas-snapshots/devnet}"
