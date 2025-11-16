@@ -128,8 +128,8 @@ if curl -s -f http://localhost:8545/eth > /dev/null 2>&1; then
         -H "Content-Type: application/json" \
         -d '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' | jq -r '.result')
     
-    if [ "$CHAIN_ID_RESPONSE" == "0x66" ]; then  # 102 in hex
-        echo -e "${GREEN}✅ ETH RPC responding with correct chain ID (0x66 = 102)${NC}"
+    if [ "$CHAIN_ID_RESPONSE" == "0x66c" ]; then  # 102 in hex
+        echo -e "${GREEN}✅ ETH RPC responding with correct chain ID (0x66c = 1644)${NC}"
         ((SUCCESS_COUNT++))
     else
         echo -e "${RED}❌ ETH RPC responding with wrong chain ID: $CHAIN_ID_RESPONSE${NC}"

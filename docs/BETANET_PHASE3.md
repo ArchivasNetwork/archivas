@@ -26,7 +26,7 @@ type Manifest struct {
     
     // Phase 3: Chain identity fields
     ChainID         string `json:"chain_id"`          // "archivas-betanet-1"
-    NetworkID       uint64 `json:"network_id"`        // 102
+    NetworkID: 1644
     ProtocolVersion int    `json:"protocol_version"`  // 2
     StateRoot       string `json:"state_root"`        // State root at height
     GenesisHash     string `json:"genesis_hash"`      // Genesis block hash
@@ -141,11 +141,11 @@ type HandshakeMessage struct {
     // Phase 3: Chain identity (strict enforcement)
     GenesisHash     [32]byte // Genesis block hash
     ChainID         string   // "archivas-betanet-1"
-    NetworkID       uint64   // 102
+    NetworkID: 1644
     ProtocolVersion int      // 2
     
     // Legacy compatibility
-    NetworkIDLegacy    string // "102" (string)
+    NetworkID: 1644" (string)
     ProtocolVersionStr string // "v2" (string)
     DifficultyParamsID string
     
@@ -323,7 +323,7 @@ http.Handle("/eth", ethHandler)
 ```json
 {
   "jsonrpc": "2.0",
-  "result": "0x66",
+  "result": "0x66c",
   "id": 1
 }
 ```

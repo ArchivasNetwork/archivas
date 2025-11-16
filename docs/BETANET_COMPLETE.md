@@ -70,7 +70,7 @@ archivas-node --network devnet-legacy
 ```
 
 **Profiles**:
-- **Betanet**: Protocol v2, Chain ID `archivas-betanet-1`, Network ID `102`, RPC port `8545`
+- **Betanet**: Protocol v2, Chain ID `archivas-betanet-1`, Network ID `1644`, RPC port `8545`
 - **Devnet Legacy**: Protocol v1, Chain ID `archivas-devnet-1`, Network ID `1`, RPC port `8080`
 
 ### 2. Dual Address System
@@ -128,7 +128,7 @@ result, _ := engine.ExecuteBlock(block, parentStateRoot)
 {
   "network": "betanet",
   "chain_id": "archivas-betanet-1",
-  "network_id": 102,
+  "network_id": 1644,
   "protocol_version": 2,
   "genesis_hash": "0xa1b2c3d4...",
   "height": 1250000,
@@ -159,7 +159,7 @@ result, _ := engine.ExecuteBlock(block, parentStateRoot)
 type HandshakeMessage struct {
     GenesisHash     [32]byte // Must match exactly
     ChainID         string   // "archivas-betanet-1"
-    NetworkID       uint64   // 102
+    NetworkID: 1644
     ProtocolVersion int      // 2
 }
 
@@ -186,7 +186,7 @@ err := p2p.VerifyHandshake(handshake, profile, genesisHash)
 # Add to MetaMask
 Network Name: Archivas Betanet
 RPC URL: https://rpc.betanet.archivas.ai
-Chain ID: 102
+Chain ID: 1644
 Currency: RCHV
 ```
 
@@ -380,7 +380,7 @@ curl -X POST http://localhost:8545/eth \
     "id": 1
   }'
 
-# Response: {"jsonrpc":"2.0","result":"0x66","id":1}
+# Response: {"jsonrpc":"2.0","result":"0x66c","id":1}
 ```
 
 ### Call ARCV RPC

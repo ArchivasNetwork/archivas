@@ -29,7 +29,7 @@ Transform Archivas into a production-ready blockchain with:
 type NetworkProfile struct {
     Name             string   // "betanet", "devnet-legacy"
     ChainID          string   // "archivas-betanet-1"
-    NetworkID        uint64   // 102 (betanet), 1 (devnet)
+    NetworkID: 1644 (betanet), 1 (devnet)
     ProtocolVersion  int      // 2 (betanet), 1 (devnet)
     GenesisPath      string
     DefaultSeeds     []string
@@ -78,10 +78,10 @@ parsed2, _ := address.ParseAddress("arcv1wskntnr...", "arcv")
 ```json
 {
   "chain_id": "archivas-betanet-1",
-  "network_id": 102,
+  "network_id": 1644,
   "protocol_version": 2,
   "evm_config": {
-    "chain_id": 102,
+    "chain_id": 1644,
     "homestead_block": 0,
     ...all EIPs enabled from block 0
   },

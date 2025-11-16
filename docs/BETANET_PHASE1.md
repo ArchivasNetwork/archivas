@@ -171,11 +171,11 @@ Located at `configs/genesis-betanet.json`:
 {
   "chain_name": "Archivas Betanet",
   "chain_id": "archivas-betanet-1",
-  "network_id": 102,
+  "network_id": 1644,
   "protocol_version": 2,
   "genesis_time": "2025-01-01T00:00:00Z",
   "evm_config": {
-    "chain_id": 102,
+    "chain_id": 1644,
     "homestead_block": 0,
     "eip150_block": 0,
     "eip155_block": 0,
@@ -247,7 +247,7 @@ genesisHash, _ := network.ComputeGenesisHash(genesis)
 
 ```
 [network] Loading network profile: betanet
-[network] Network: betanet (chain-id: archivas-betanet-1, network-id: 102, protocol: v2)
+[network] Network: betanet (chain-id: archivas-betanet-1, network-id: 1644, protocol: v2)
 🚀 Archivas Betanet Node running…
 
 🔧 Configuration:

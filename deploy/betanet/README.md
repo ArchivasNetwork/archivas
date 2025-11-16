@@ -131,7 +131,7 @@ Comprehensive verification script that checks:
 - ✅ Systemd service enabled and running
 - ✅ Network ports listening (8545 RPC, 30303 P2P)
 - ✅ Firewall configuration
-- ✅ RPC responding with correct chain ID (0x66 = 102)
+- ✅ RPC responding with correct chain ID (0x66c = 1644)
 - ✅ Data directory exists
 - ✅ Logs confirm betanet network
 
@@ -170,7 +170,7 @@ bash status.sh
 {
   "network": "betanet",
   "chain_id": "archivas-betanet-1",
-  "network_id": 102,
+  "network_id": 1644,
   "protocol_version": 2,
   "evm_enabled": true,
   "address_format": "Bech32 (arcv1...)"
@@ -180,7 +180,7 @@ bash status.sh
 ### Verification
 
 **Genesis Hash**: Computed from `genesis-betanet.json`  
-**Chain ID (hex)**: `0x66` (102 decimal)  
+**Chain ID (hex)**: `0x66` (1644 decimal)  
 **RPC Port**: 8545 (Ethereum-compatible)  
 **P2P Port**: 30303  
 

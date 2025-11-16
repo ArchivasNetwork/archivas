@@ -227,8 +227,8 @@ curl -X POST http://localhost:8545/eth \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}'
 
-# Expected: {"jsonrpc":"2.0","result":"0x66","id":1}
-# 0x66 = 102 (betanet network ID)
+# Expected: {"jsonrpc":"2.0","result":"0x66c","id":1}
+# 0x66c = 1644 (betanet network ID)
 
 # Test ETH RPC - Get block number
 curl -X POST http://localhost:8545/eth \
@@ -339,7 +339,7 @@ jq '{chain_id, network_id, protocol_version}' /etc/archivas/betanet/genesis-beta
 # Expected output:
 {
   "chain_id": "archivas-betanet-1",
-  "network_id": 102,
+  "network_id": 1644,
   "protocol_version": 2
 }
 
@@ -354,7 +354,7 @@ curl -s -X POST http://localhost:8545/eth \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' | jq .
 
-# Should return: {"jsonrpc":"2.0","result":"0x66","id":1}
+# Should return: {"jsonrpc":"2.0","result":"0x66c","id":1}
 ```
 
 ### Status Dashboard
@@ -631,7 +631,7 @@ curl -X POST http://localhost:8545/eth \
 - [ ] Node started and running
 - [ ] RPC responding on port 8545
 - [ ] P2P listening on port 30303
-- [ ] Chain ID verified (102 / 0x66)
+- [ ] Chain ID verified (1644 / 0x66c)
 - [ ] Peers connecting
 - [ ] Blocks syncing
 - [ ] Logs clean (no errors)

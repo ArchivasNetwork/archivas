@@ -25,7 +25,7 @@ var NetworkProfiles = map[string]*NetworkProfile{
 	"betanet": {
 		Name:              "betanet",
 		ChainID:           "archivas-betanet-1",
-		NetworkID:         102,
+		NetworkID:         1644,
 		ProtocolVersion:   2,
 		GenesisPath:       "configs/genesis-betanet.json",
 		DefaultSeeds: []string{
