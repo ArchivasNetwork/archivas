@@ -1,0 +1,135 @@
+# Archivas Betanet Node Configuration
+# Server: 72.251.11.191
+# Network: betanet (archivas-betanet-1)
+# Protocol: v2 (EVM-enabled)
+
+[network]
+# Network identity
+name = "betanet"
+chain_id = "archivas-betanet-1"
+network_id = 102
+protocol_version = 2
+
+# Genesis file
+genesis_path = "/etc/archivas/betanet/genesis-betanet.json"
+
+# Bech32 address prefix
+address_prefix = "arcv"
+
+[node]
+# Public IP address (advertised to peers)
+public_ip = "72.251.11.191"
+
+# Node identity (optional, for logging)
+node_name = "betanet-node-01"
+node_version = "v1.0.0"
+
+# Data directory
+data_dir = "/var/lib/archivas/betanet"
+
+# EVM enabled
+evm_enabled = true
+
+[rpc]
+# RPC server configuration
+enabled = true
+listen_addr = "0.0.0.0:8545"
+
+# ETH RPC endpoints (Phase 3)
+eth_rpc_enabled = true
+arcv_rpc_enabled = true
+
+# CORS settings
+cors_allowed_origins = ["*"]
+cors_allowed_methods = ["GET", "POST", "OPTIONS"]
+
+# Rate limiting
+rate_limit_enabled = true
+rate_limit_requests_per_second = 100
+
+# Gas settings
+default_gas_price = 1000000000  # 1 gwei
+max_gas_limit = 30000000        # 30M gas per block
+
+[p2p]
+# P2P network configuration
+enabled = true
+listen_addr = "0.0.0.0:30303"
+
+# Seed nodes
+seeds = [
+    "seed1.betanet.archivas.ai:30303",
+    "seed2.betanet.archivas.ai:30303"
+]
+
+# Peer discovery
+enable_discovery = true
+max_peers = 50
+dial_timeout = "30s"
+
+# Peer whitelist (for private nodes, leave empty for public)
+peer_whitelist = []
+
+# P2P identity enforcement (Phase 3)
+enforce_identity = true
+reject_incompatible_peers = true
+
+[consensus]
+# PoST consensus parameters
+difficulty_adjustment_window = 100
+target_block_time = 20  # seconds
+initial_difficulty = 15000000
+
+# VDF settings
+vdf_required = false
+vdf_iterations = 1000000
+
+[farming]
+# Farming configuration (if this node farms)
+enabled = false
+farmer_address = ""
+plots_directory = "/mnt/plots"
+
+# Plot verification
+k_size = 32
+min_plot_size = 107374182400  # 100 GiB
+
+[snapshot]
+# Snapshot bootstrap configuration
+enabled = true
+manifest_url = "https://seed2.betanet.archivas.ai/betanet/latest.json"
+
+# Verification (Phase 3)
+verify_manifest = true
+verify_genesis_hash = true
+verify_state_root = true
+
+[logging]
+# Logging configuration
+level = "info"  # debug, info, warn, error
+format = "json"
+output = "stdout"
+
+# Log to file (optional)
+file_enabled = false
+file_path = "/var/log/archivas/betanet.log"
+file_max_size_mb = 100
+file_max_backups = 10
+
+[metrics]
+# Prometheus metrics
+enabled = true
+listen_addr = "127.0.0.1:9090"
+
+[health]
+# Health check endpoint
+enabled = true
+listen_addr = "127.0.0.1:8080"
+
+[firewall]
+# Firewall configuration (for reference)
+# These ports should be open:
+# - 30303 (P2P) - TCP/UDP
+# - 8545 (RPC) - TCP
+# - 22 (SSH) - TCP (for management)
+

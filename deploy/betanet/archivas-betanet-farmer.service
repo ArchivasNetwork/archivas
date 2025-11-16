@@ -1,0 +1,59 @@
+[Unit]
+Description=Archivas Betanet Farmer
+Documentation=https://docs.archivas.ai
+After=archivas-betanet.service
+Requires=archivas-betanet.service
+
+[Service]
+Type=simple
+User=archivas
+Group=archivas
+
+# Working directory
+WorkingDirectory=/opt/archivas
+
+# Environment
+Environment="NETWORK=betanet"
+Environment="PLOTS_DIR=/mnt/plots"
+Environment="GOMAXPROCS=4"
+
+# Command
+# Replace FARMER_ADDRESS with your actual ARCV or 0x address
+ExecStart=/usr/local/bin/archivas-farmer \
+    --rpc http://127.0.0.1:8545 \
+    --plots /mnt/plots \
+    --farmer-address FARMER_ADDRESS_HERE \
+    --network betanet \
+    --threads 4
+
+# Restart policy
+Restart=always
+RestartSec=10
+StartLimitBurst=5
+StartLimitInterval=300
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=archivas-betanet-farmer
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/mnt/plots
+ReadOnlyPaths=/etc/archivas/betanet
+
+# Process management
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
+

@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/ArchivasNetwork/archivas/network"
 	"github.com/ArchivasNetwork/archivas/storage"
 )
 
@@ -303,12 +304,25 @@ func isDirEmpty(path string) (bool, error) {
 }
 
 // Manifest represents a snapshot manifest from a URL
+// Manifest describes a snapshot for bootstrapping
+// Phase 3: Extended with chain identity fields for verification
 type Manifest struct {
-	Network       string `json:"network"`
-	Height        uint64 `json:"height"`
-	Hash          string `json:"hash"`
-	SnapshotURL   string `json:"snapshot_url"`
-	ChecksumSHA256 string `json:"checksum_sha256"`
+	Network        string `json:"network"`         // Network name (betanet, devnet-legacy)
+	Height         uint64 `json:"height"`          // Block height
+	Hash           string `json:"hash"`            // Block hash
+	SnapshotURL    string `json:"snapshot_url"`    // URL to download snapshot
+	ChecksumSHA256 string `json:"checksum_sha256"` // SHA256 checksum of snapshot file
+	
+	// Phase 3: Chain identity fields
+	ChainID         string `json:"chain_id"`          // Chain ID (e.g., "archivas-betanet-1")
+	NetworkID       uint64 `json:"network_id"`        // Numeric network ID (e.g., 102)
+	ProtocolVersion int    `json:"protocol_version"`  // Protocol version (e.g., 2)
+	StateRoot       string `json:"state_root"`        // State root at this height
+	GenesisHash     string `json:"genesis_hash"`      // Genesis block hash
+	
+	// Metadata
+	CreatedAt string `json:"created_at"` // Timestamp
+	CreatedBy string `json:"created_by"` // Node that created the snapshot
 }
 
 // BootstrapOptions configures automated snapshot bootstrap
@@ -316,9 +330,14 @@ type BootstrapOptions struct {
 	ManifestURL string
 	DBPath      string
 	Force       bool
+	
+	// Phase 3: Identity verification
+	NetworkProfile *network.NetworkProfile // Network profile for verification
+	GenesisHash    string                   // Genesis hash for verification
 }
 
 // Bootstrap downloads a snapshot from a manifest URL, verifies it, and imports it
+// Phase 3: Now includes identity verification
 func Bootstrap(opts BootstrapOptions) (*Metadata, error) {
 	fmt.Printf("[bootstrap] Fetching manifest from %s...\n", opts.ManifestURL)
 
@@ -330,6 +349,9 @@ func Bootstrap(opts BootstrapOptions) (*Metadata, error) {
 
 	fmt.Printf("[bootstrap] Manifest info:\n")
 	fmt.Printf("  Network:  %s\n", manifest.Network)
+	fmt.Printf("  Chain ID: %s\n", manifest.ChainID)
+	fmt.Printf("  Network ID: %d\n", manifest.NetworkID)
+	fmt.Printf("  Protocol: v%d\n", manifest.ProtocolVersion)
 	fmt.Printf("  Height:   %d\n", manifest.Height)
 	hashDisplay := manifest.Hash
 	if len(hashDisplay) > 16 {
@@ -337,6 +359,17 @@ func Bootstrap(opts BootstrapOptions) (*Metadata, error) {
 	}
 	fmt.Printf("  Hash:     %s\n", hashDisplay)
 	fmt.Printf("  Snapshot: %s\n", manifest.SnapshotURL)
+	
+	// Phase 3: Verify manifest identity
+	if opts.NetworkProfile != nil {
+		fmt.Printf("[bootstrap] Verifying manifest identity...\n")
+		if err := VerifyManifest(manifest, opts.NetworkProfile, opts.GenesisHash); err != nil {
+			return nil, fmt.Errorf("manifest verification failed: %w", err)
+		}
+		fmt.Printf("[bootstrap] ✓ Manifest verification passed\n")
+	} else {
+		fmt.Printf("[bootstrap] ⚠️  Skipping manifest verification (no network profile provided)\n")
+	}
 
 	// 2. Download snapshot to temp file
 	tempFile, err := os.CreateTemp("", "archivas-snapshot-*.tar.gz")

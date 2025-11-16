@@ -21,6 +21,7 @@ import (
 	"github.com/ArchivasNetwork/archivas/logging"
 	"github.com/ArchivasNetwork/archivas/mempool"
 	"github.com/ArchivasNetwork/archivas/metrics"
+	"github.com/ArchivasNetwork/archivas/network"
 	"github.com/ArchivasNetwork/archivas/node"
 	"github.com/ArchivasNetwork/archivas/p2p"
 	"github.com/ArchivasNetwork/archivas/pospace"
@@ -122,13 +123,15 @@ func main() {
 	log.Println("[build] PoSpace self-test passed ✓")
 
 	// Parse CLI flags
-	rpcAddr := flag.String("rpc", ":8080", "RPC listen address")
-	p2pAddr := flag.String("p2p", ":9090", "P2P listen address")
+	// Phase 1: Network profile selection
+	networkName := flag.String("network", network.DefaultNetwork(), "Network to join (betanet, devnet-legacy)")
+	rpcAddr := flag.String("rpc", "", "RPC listen address (default: from network profile)")
+	p2pAddr := flag.String("p2p", "", "P2P listen address (default: from network profile)")
 	peerAddrs := flag.String("peer", "", "Comma-separated peer addresses (e.g., ip1:9090,ip2:9090)")
 	dbPath := flag.String("db", "./data", "Database directory path")
 	vdfRequired := flag.Bool("vdf-required", false, "Require VDF proofs in blocks (PoSpace+Time mode)")
-	genesisPath := flag.String("genesis", "", "Genesis file path (required on first start)")
-	networkID := flag.String("network-id", "archivas-devnet-v3", "Network ID")
+	genesisPath := flag.String("genesis", "", "Genesis file path (overrides network profile)")
+	networkID := flag.String("network-id", "", "Network ID (overrides network profile)")
 	bootnodes := flag.String("bootnodes", "", "Comma-separated bootnode addresses")
 
 	// Gossip flags
@@ -147,8 +150,36 @@ func main() {
 
 	flag.Parse()
 
+	// Phase 1: Load network profile
+	log.Printf("[network] Loading network profile: %s", *networkName)
+	profile, err := network.GetProfile(*networkName)
+	if err != nil {
+		log.Fatalf("Failed to load network profile: %v", err)
+	}
+
+	// Apply network profile defaults
+	if *rpcAddr == "" {
+		*rpcAddr = fmt.Sprintf(":%d", profile.DefaultRPCPort)
+	}
+	if *p2pAddr == "" {
+		*p2pAddr = fmt.Sprintf(":%d", profile.DefaultP2PPort)
+	}
+	if *genesisPath == "" {
+		*genesisPath = profile.GenesisPath
+	}
+	if *networkID == "" {
+		*networkID = profile.ChainID
+	}
+
+	log.Printf("[network] Network: %s (chain-id: %s, network-id: %d, protocol: v%d)",
+		profile.Name, profile.ChainID, profile.NetworkID, profile.ProtocolVersion)
+
 	log.Println("[startup] Archivas node starting...")
-	fmt.Println("Archivas Devnet Node running…")
+	if profile.Name == "betanet" {
+		fmt.Println("🚀 Archivas Betanet Node running…")
+	} else {
+		fmt.Println("Archivas Devnet Node running…")
+	}
 	fmt.Println()
 
 	// v1.1.1: Ensure RPC binds to 0.0.0.0 if no host specified (for metrics scraping)
@@ -158,6 +189,8 @@ func main() {
 	}
 
 	fmt.Printf("🔧 Configuration:\n")
+	fmt.Printf("   Network: %s\n", profile.Name)
+	fmt.Printf("   Chain ID: %s\n", profile.ChainID)
 	fmt.Printf("   RPC:  %s\n", rpcBindAddr)
 	fmt.Printf("   P2P:  %s\n", *p2pAddr)
 	if *peerAddrs != "" {
@@ -1632,11 +1665,12 @@ func printUsage() {
 	fmt.Println("  archivas-node help                           Show this help")
 	fmt.Println()
 	fmt.Println("Node Flags:")
-	fmt.Println("  --rpc <addr>                RPC listen address (default: :8080)")
-	fmt.Println("  --p2p <addr>                P2P listen address (default: :9090)")
+	fmt.Println("  --network <name>            Network to join (betanet, devnet-legacy) [default: betanet]")
+	fmt.Println("  --rpc <addr>                RPC listen address (default: from network profile)")
+	fmt.Println("  --p2p <addr>                P2P listen address (default: from network profile)")
 	fmt.Println("  --db <path>                 Database directory (default: ./data)")
-	fmt.Println("  --genesis <path>            Genesis file path (required on first start)")
-	fmt.Println("  --network-id <id>           Network ID (default: archivas-devnet-v4)")
+	fmt.Println("  --genesis <path>            Genesis file path (overrides network profile)")
+	fmt.Println("  --network-id <id>           Network ID (overrides network profile)")
 	fmt.Println()
 	fmt.Println("Private Node Flags:")
 	fmt.Println("  --no-peer-discovery         Disable automatic peer discovery")
@@ -1649,16 +1683,17 @@ func printUsage() {
 	fmt.Println("  archivas-node snapshot import --in <file> --db <path> [--force]")
 	fmt.Println()
 	fmt.Println("Examples:")
-	fmt.Println("  # Run a public seed node:")
-	fmt.Println("  archivas-node --rpc 0.0.0.0:8080 --p2p 0.0.0.0:9090 --db ./data")
+	fmt.Println("  # Run a Betanet node (default):")
+	fmt.Println("  archivas-node --rpc 0.0.0.0:8545 --p2p 0.0.0.0:9090 --db ./data")
 	fmt.Println()
-	fmt.Println("  # Run a private node for farming:")
-	fmt.Println("  archivas-node --rpc 127.0.0.1:8080 --p2p 0.0.0.0:9090 \\")
+	fmt.Println("  # Run a devnet-legacy node:")
+	fmt.Println("  archivas-node --network devnet-legacy --db ./devnet-data")
+	fmt.Println()
+	fmt.Println("  # Run a private Betanet node for farming:")
+	fmt.Println("  archivas-node --network betanet --rpc 127.0.0.1:8545 --p2p 0.0.0.0:9090 \\")
 	fmt.Println("    --no-peer-discovery \\")
-	fmt.Println("    --peer-whitelist seed.archivas.ai:9090 \\")
-	fmt.Println("    --peer-whitelist seed2.archivas.ai:9090 \\")
-	fmt.Println("    --checkpoint-height 1200000 \\")
-	fmt.Println("    --checkpoint-hash abc123...")
+	fmt.Println("    --peer-whitelist seed1.betanet.archivas.ai:9090 \\")
+	fmt.Println("    --peer-whitelist seed2.betanet.archivas.ai:9090")
 	fmt.Println()
 	fmt.Println("  # Export a snapshot:")
 	fmt.Println("  archivas-node snapshot export --height 1200000 --out snapshot.tar.gz --db ./data")

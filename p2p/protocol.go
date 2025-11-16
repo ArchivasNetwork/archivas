@@ -120,10 +120,20 @@ type BlocksBatchMessage struct {
 
 // HandshakeMessage validates peer compatibility before allowing connection
 // v1.1.1: Prevents incompatible nodes from connecting
+// Phase 3: Enhanced with chain identity fields
 type HandshakeMessage struct {
-	GenesisHash        [32]byte `json:"genesisHash"`        // Must match exactly
-	NetworkID          string   `json:"networkID"`          // Must match exactly
-	ProtocolVersion    string   `json:"protocolVersion"`    // Must be compatible
-	DifficultyParamsID string   `json:"difficultyParamsID"` // Must match exactly
-	NodeVersion        string   `json:"nodeVersion"`        // For logging/debugging
+	// Phase 3: Chain identity fields (strict enforcement)
+	GenesisHash     [32]byte `json:"genesisHash"`     // Genesis block hash - must match exactly
+	ChainID         string   `json:"chainID"`         // Chain ID (e.g., "archivas-betanet-1") - must match
+	NetworkID       uint64   `json:"networkID"`       // Numeric network ID (e.g., 102) - must match
+	ProtocolVersion int      `json:"protocolVersion"` // Protocol version (e.g., 2) - must match
+	
+	// Legacy/compatibility fields
+	NetworkIDLegacy    string `json:"networkIDLegacy"`    // Old string network ID (for compatibility)
+	ProtocolVersionStr string `json:"protocolVersionStr"` // Old string protocol version
+	DifficultyParamsID string `json:"difficultyParamsID"` // Difficulty params ID
+	
+	// Informational fields
+	NodeVersion string `json:"nodeVersion"` // For logging/debugging
+	NodeName    string `json:"nodeName"`    // Optional node name
 }
