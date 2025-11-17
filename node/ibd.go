@@ -106,7 +106,7 @@ func (m *IBDManager) ShouldRunIBD(localHeight, remoteHeight uint64) bool {
 // RunIBD performs Initial Block Download from a peer
 func (m *IBDManager) RunIBD(peerURL string) error {
 	// Fetch remote tip
-	remoteTip, err := m.fetchRemoteTip(peerURL)
+	remoteTip, err := m.FetchRemoteTip(peerURL)
 	if err != nil {
 		return fmt.Errorf("failed to fetch remote tip: %w", err)
 	}
@@ -235,8 +235,8 @@ func (m *IBDManager) RunIBD(peerURL string) error {
 	return nil
 }
 
-// fetchRemoteTip gets current chain tip from peer
-func (m *IBDManager) fetchRemoteTip(peerURL string) (uint64, error) {
+// FetchRemoteTip gets current chain tip from peer (exported for periodic sync checks)
+func (m *IBDManager) FetchRemoteTip(peerURL string) (uint64, error) {
 	url := fmt.Sprintf("%s/chainTip", peerURL)
 	
 	// Use longer timeout for remote tip (server may be slow)

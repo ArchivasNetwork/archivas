@@ -120,3 +120,6 @@ echo "7. Run verification:"
 echo "   ./deploy/betanet-seed2/verify.sh"
 echo ""
 
+
+
+

@@ -526,3 +526,8 @@ That will get you a true farmer/node GUI on top of a forked Bitcoin Core UI.
 
 
 
+
+
+
+
+

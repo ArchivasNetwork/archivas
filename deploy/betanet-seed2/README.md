@@ -219,3 +219,6 @@ ufw enable
 
 **🎉 Once all checks pass, Seed 2 is operational!**
 
+
+
+

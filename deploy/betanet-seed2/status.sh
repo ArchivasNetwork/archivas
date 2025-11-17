@@ -130,3 +130,6 @@ echo "Run 'sudo journalctl -u archivas-betanet-farmer -f' for farmer logs"
 echo "Run './deploy/betanet-seed2/verify.sh' for full verification"
 echo ""
 
+
+
+

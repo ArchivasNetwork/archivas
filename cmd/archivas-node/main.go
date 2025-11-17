@@ -597,13 +597,56 @@ func main() {
 					peerURLs = append(peerURLs, peerURL)
 				}
 
-				// Run IBD with retry across peers
-				if err := ibdManager.RunIBDWithRetry(peerURLs); err != nil {
-					log.Printf("[IBD] All peers failed: %v", err)
+			// Run IBD with retry across peers
+			if err := ibdManager.RunIBDWithRetry(peerURLs); err != nil {
+				log.Printf("[IBD] All peers failed: %v", err)
+			}
+
+			// Start periodic chain sync check (runs every 30 seconds)
+			// This enables automatic chain reorganization when peers have a longer chain
+			go func() {
+				ticker := time.NewTicker(30 * time.Second)
+				defer ticker.Stop()
+
+				// Wait for initial IBD to complete
+				time.Sleep(10 * time.Second)
+
+				for range ticker.C {
+					// Get current local height
+					localHeight, _, _ := nodeState.GetStatus()
+
+					// Check each peer's chain tip
+					var bestPeerURL string
+					var bestRemoteHeight uint64
+
+					for _, peerURL := range peerURLs {
+						remoteHeight, err := ibdManager.FetchRemoteTip(peerURL)
+						if err != nil {
+							continue // Skip unreachable peers
+						}
+
+						if remoteHeight > bestRemoteHeight {
+							bestRemoteHeight = remoteHeight
+							bestPeerURL = peerURL
+						}
+					}
+
+					// If any peer has a significantly longer chain, trigger IBD
+					if bestRemoteHeight > localHeight && ibdManager.ShouldRunIBD(localHeight, bestRemoteHeight) {
+						log.Printf("[SYNC] Detected longer chain: local=%d remote=%d (gap=%d), triggering reorg from %s",
+							localHeight, bestRemoteHeight, bestRemoteHeight-localHeight, bestPeerURL)
+
+						if err := ibdManager.RunIBD(bestPeerURL); err != nil {
+							log.Printf("[SYNC] Failed to sync from %s: %v", bestPeerURL, err)
+						} else {
+							log.Printf("[SYNC] Successfully reorganized to height %d", bestRemoteHeight)
+						}
+					}
 				}
 			}()
-		}
+		}()
 	}
+}
 
 	// Start RPC server in background
 	log.Println("[DEBUG] Starting RPC server...")
