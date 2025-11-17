@@ -1,0 +1,37 @@
+[Unit]
+Description=Archivas Betanet Seed 2 Farmer
+After=archivas-betanet.service
+Requires=archivas-betanet.service
+
+[Service]
+Type=simple
+User=archivas
+Group=archivas
+WorkingDirectory=/opt/archivas
+
+# IMPORTANT: Replace YOUR_PRIVATE_KEY_HERE with actual private key
+# Generate with: archivas-wallet new
+ExecStart=/usr/local/bin/archivas-farmer farm \
+  --node http://127.0.0.1:8545 \
+  --plots /mnt/plots \
+  --farmer-privkey YOUR_PRIVATE_KEY_HERE
+
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=archivas-farmer
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/mnt/plots
+
+# Resource limits
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+

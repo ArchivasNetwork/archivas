@@ -1,0 +1,54 @@
+# Archivas Betanet Seed 2 Configuration
+# Server: 57.129.96.158
+# Role: Seed Node + Farmer
+
+[network]
+name = "betanet"
+chain_id = "archivas-betanet-1"
+network_id = 1644
+protocol_version = 2
+
+[node]
+data_dir = "/var/lib/archivas/betanet"
+log_level = "info"
+
+[p2p]
+listen_addr = "0.0.0.0:30303"
+external_addr = "57.129.96.158:30303"
+max_peers = 50
+enable_discovery = true
+
+# Bootstrap from Seed 1
+seeds = [
+    "seed1.betanet.archivas.ai:30303"
+]
+
+# This node will also act as a seed once operational
+advertise_as_seed = true
+
+[rpc]
+enabled = true
+listen_addr = "0.0.0.0:8545"
+cors_origins = ["*"]
+enable_eth_api = true
+enable_arcv_api = true
+
+[evm]
+enabled = true
+gas_limit = 30000000
+
+[consensus]
+target_block_time = "20s"
+
+[farming]
+enabled = false  # Will be enabled by separate farmer service
+plots_dir = "/mnt/plots"
+
+[snapshot]
+verify_manifest = true
+require_genesis_match = true
+
+[logging]
+output = "journald"
+format = "json"
+

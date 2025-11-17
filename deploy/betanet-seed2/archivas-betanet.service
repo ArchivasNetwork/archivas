@@ -1,0 +1,39 @@
+[Unit]
+Description=Archivas Betanet Seed 2 Node
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=archivas
+Group=archivas
+WorkingDirectory=/opt/archivas
+ExecStart=/usr/local/bin/archivas-node \
+  --network betanet \
+  --data-dir /var/lib/archivas/betanet \
+  --rpc 0.0.0.0:8545 \
+  --p2p 0.0.0.0:30303 \
+  --external-ip 57.129.96.158 \
+  --seeds seed1.betanet.archivas.ai:30303 \
+  --log-level info
+
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=archivas-betanet
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/archivas/betanet
+
+# Resource limits
+LimitNOFILE=65536
+TimeoutStopSec=300
+
+[Install]
+WantedBy=multi-user.target
+
