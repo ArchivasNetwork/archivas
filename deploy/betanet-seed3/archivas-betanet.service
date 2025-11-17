@@ -1,0 +1,45 @@
+[Unit]
+Description=Archivas Betanet Seed 3 (Public Gateway)
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=archivas
+Group=archivas
+WorkingDirectory=/opt/archivas
+ExecStart=/usr/local/bin/archivas-node \
+  --network betanet \
+  --rpc 0.0.0.0:8545 \
+  --p2p 0.0.0.0:30303 \
+  --db /var/lib/archivas/betanet \
+  --genesis /opt/archivas/configs/genesis-betanet.json \
+  --peer seed1.betanet.archivas.ai:30303 \
+  --peer seed2.betanet.archivas.ai:30303 \
+  --max-peers 100 \
+  --enable-gossip
+
+# Performance
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+# Restart policy
+Restart=always
+RestartSec=10s
+StartLimitInterval=600s
+StartLimitBurst=5
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=archivas-betanet-seed3
+
+[Install]
+WantedBy=multi-user.target
+

@@ -1,0 +1,58 @@
+# Archivas Betanet - Seed 3 Public Gateway Configuration
+# Server: 51.89.11.4 (seed3.betanet.archivas.ai)
+# Role: Public gateway node (non-farming)
+
+[network]
+name = "betanet"
+chain_id = "archivas-betanet-1"
+network_id = 1644
+protocol_version = 2
+
+[node]
+data_dir = "/var/lib/archivas/betanet"
+genesis_file = "/opt/archivas/configs/genesis-betanet.json"
+
+[rpc]
+enabled = true
+listen_addr = "0.0.0.0:8545"
+cors_origins = ["*"]  # Public RPC - consider restricting in production
+max_connections = 1000
+
+[p2p]
+enabled = true
+listen_addr = "0.0.0.0:30303"
+external_ip = "51.89.11.4"
+max_peers = 100
+enable_gossip = true
+gossip_interval = "60s"
+gossip_max_peers = 20
+
+# Bootstrap seeds (connect to both seed 1 and seed 2)
+bootstrap_peers = [
+    "seed1.betanet.archivas.ai:30303",
+    "seed2.betanet.archivas.ai:30303"
+]
+
+# NO peer whitelist - this is a public node
+# peer_whitelist = []  # EMPTY = accept all
+
+[consensus]
+target_block_time = "20s"
+difficulty_adjustment_window = 100
+
+[farming]
+enabled = false  # Seed 3 does NOT farm
+
+[logging]
+level = "info"
+format = "json"
+output = "stdout"
+
+[metrics]
+enabled = true
+listen_addr = "127.0.0.1:9090"
+
+[snapshot]
+enabled = false  # Seed 2 handles snapshots
+directory = "/var/lib/archivas/snapshots"
+
