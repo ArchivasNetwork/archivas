@@ -417,7 +417,85 @@ func (s *FarmingServer) handleRoot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+
+	// Handle JSON-RPC requests for ETH compatibility
+	if r.Method == http.MethodPost {
+		var req struct {
+			JSONRPC string          `json:"jsonrpc"`
+			Method  string          `json:"method"`
+			Params  json.RawMessage `json:"params"`
+			ID      interface{}     `json:"id"`
+		}
+		
+		if err := json.NewDecoder(r.Body).Decode(&req); err == nil && req.JSONRPC == "2.0" {
+			// Handle ETH JSON-RPC methods
+			s.handleJSONRPC(w, req.Method, req.Params, req.ID)
+			return
+		}
+	}
+
+	// Legacy response for non-JSON-RPC requests
 	fmt.Fprintf(w, `{"status":"ok","message":"Archivas Devnet RPC Server (Farming Enabled)"}`)
+}
+
+// handleJSONRPC routes JSON-RPC 2.0 requests to appropriate handlers
+func (s *FarmingServer) handleJSONRPC(w http.ResponseWriter, method string, params json.RawMessage, id interface{}) {
+	var result interface{}
+	var err error
+
+	switch method {
+	case "eth_chainId":
+		// Return Betanet chain ID: 1644 (0x66c)
+		result = fmt.Sprintf("0x%x", uint64(1644))
+	
+	case "eth_blockNumber":
+		height, _, _ := s.nodeState.GetStatus()
+		result = fmt.Sprintf("0x%x", height)
+	
+	case "net_version":
+		// Return network ID as string
+		result = "1644"
+	
+	case "eth_getBalance", "eth_getCode", "eth_getTransactionReceipt", 
+	     "eth_getTransactionCount", "eth_gasPrice", "eth_call", "eth_sendRawTransaction":
+		// These require full EVM integration - return not implemented for now
+		writeJSONRPCError(w, id, -32601, "Method not yet implemented")
+		return
+	
+	default:
+		writeJSONRPCError(w, id, -32601, "Method not found")
+		return
+	}
+
+	if err != nil {
+		writeJSONRPCError(w, id, -32000, err.Error())
+		return
+	}
+
+	writeJSONRPCResponse(w, id, result)
+}
+
+// writeJSONRPCResponse writes a successful JSON-RPC response
+func writeJSONRPCResponse(w http.ResponseWriter, id interface{}, result interface{}) {
+	resp := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      id,
+		"result":  result,
+	}
+	json.NewEncoder(w).Encode(resp)
+}
+
+// writeJSONRPCError writes a JSON-RPC error response
+func writeJSONRPCError(w http.ResponseWriter, id interface{}, code int, message string) {
+	resp := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      id,
+		"error": map[string]interface{}{
+			"code":    code,
+			"message": message,
+		},
+	}
+	json.NewEncoder(w).Encode(resp)
 }
 
 // updateChainTipCache updates the cached chain tip status periodically
