@@ -9,13 +9,11 @@ User=archivas
 Group=archivas
 WorkingDirectory=/opt/archivas
 ExecStart=/usr/local/bin/archivas-node \
-  --network betanet \
-  --data-dir /var/lib/archivas/betanet \
-  --rpc 0.0.0.0:8545 \
-  --p2p 0.0.0.0:30303 \
-  --external-ip 57.129.96.158 \
-  --seeds seed1.betanet.archivas.ai:30303 \
-  --log-level info
+  -network betanet \
+  -db /var/lib/archivas/betanet \
+  -rpc 0.0.0.0:8545 \
+  -p2p 0.0.0.0:30303 \
+  -peer seed1.betanet.archivas.ai:30303
 
 Restart=always
 RestartSec=10
@@ -36,4 +34,7 @@ TimeoutStopSec=300
 
 [Install]
 WantedBy=multi-user.target
+
+
+
 
