@@ -589,7 +589,10 @@ func main() {
 						peerURL = "https://seed.archivas.ai"
 					} else {
 						// Convert P2P port to RPC port
-						peerURL = fmt.Sprintf("http://%s", strings.Replace(peerAddr, ":9090", ":8080", 1))
+						// Handle both legacy Devnet (9090->8080) and Betanet (30303->8545)
+						peerURL = fmt.Sprintf("http://%s", peerAddr)
+						peerURL = strings.Replace(peerURL, ":9090", ":8080", 1)  // Legacy Devnet
+						peerURL = strings.Replace(peerURL, ":30303", ":8545", 1) // Betanet
 					}
 					peerURLs = append(peerURLs, peerURL)
 				}
