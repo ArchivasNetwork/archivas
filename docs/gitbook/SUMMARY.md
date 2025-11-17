@@ -15,6 +15,12 @@
 * [Get Testnet RCHV](getting-started/get-rchv.md)
 * [Your First Transaction](getting-started/first-transaction.md)
 
+## Betanet
+
+* [Running a Betanet Node](betanet/running-betanet-node.md)
+* [Farming with Seed3 (Public)](betanet/farming-with-seed3.md)
+* [Farming with Private Node](betanet/farming-with-private-node.md)
+
 ## For Developers
 
 * [Developer Overview](developers/overview.md)
