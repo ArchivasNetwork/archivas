@@ -38,8 +38,8 @@ type IBDConfig struct {
 func DefaultIBDConfig(dataDir string) *IBDConfig {
 	return &IBDConfig{
 		BatchSize:         512,
-		IBDThreshold:      200,
-		CatchUpThreshold:  50,
+		IBDThreshold:      1,  // Trigger IBD for any gap >= 1 block (was 200)
+		CatchUpThreshold:  0,  // Exit IBD when fully caught up (was 50)
 		RetryDelay:        5 * time.Second,
 		MaxRetries:        5,
 		StateFile:         filepath.Join(dataDir, "ibd_state.json"),
