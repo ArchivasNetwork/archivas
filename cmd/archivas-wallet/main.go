@@ -12,6 +12,7 @@ import (
 	"strconv"
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
+	"github.com/ArchivasNetwork/archivas/address"
 	"github.com/ArchivasNetwork/archivas/ledger"
 	"github.com/ArchivasNetwork/archivas/wallet"
 )
@@ -59,21 +60,31 @@ func cmdNew() {
 		os.Exit(1)
 	}
 
-	// Derive address
-	address, err := wallet.PubKeyToAddress(pubKey)
+	// Derive addresses using UNIFIED Ethereum-compatible derivation
+	evmAddr, err := address.PrivateKeyToEVMAddress(privKey)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error deriving address: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error deriving EVM address: %v\n", err)
+		os.Exit(1)
+	}
+
+	arcvAddr, err := address.EncodeARCVAddress(evmAddr, "arcv")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error encoding ARCV address: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Print wallet info
-	fmt.Println("🔐 New Archivas Wallet Generated")
+	fmt.Println("🔐 New Ethereum-Compatible Archivas Wallet Generated")
 	fmt.Println()
-	fmt.Printf("Address:     %s\n", address)
-	fmt.Printf("Public Key:  %s\n", hex.EncodeToString(pubKey))
-	fmt.Printf("Private Key: %s\n", hex.EncodeToString(privKey))
+	fmt.Printf("ARCV Address (Bech32): %s\n", arcvAddr)
+	fmt.Printf("EVM Address (Hex):     %s\n", evmAddr.Hex())
+	fmt.Printf("Public Key:            %s\n", hex.EncodeToString(pubKey))
+	fmt.Printf("Private Key:           %s\n", hex.EncodeToString(privKey))
 	fmt.Println()
 	fmt.Println("⚠️  KEEP YOUR PRIVATE KEY SECRET! Anyone with access can spend your RCHV.")
+	fmt.Println()
+	fmt.Println("✅ This wallet is fully compatible with MetaMask!")
+	fmt.Println("   Import the private key to MetaMask to manage your RCHV.")
 }
 
 func cmdSend() {
@@ -102,16 +113,23 @@ func cmdSend() {
 		os.Exit(1)
 	}
 
-	// Derive public key and address from private key
+	// Derive address from private key using UNIFIED Ethereum-compatible derivation
+	evmAddr, err := address.PrivateKeyToEVMAddress(privKeyBytes)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error deriving EVM address: %v\n", err)
+		os.Exit(1)
+	}
+
+	fromAddr, err := address.EncodeARCVAddress(evmAddr, "arcv")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error encoding ARCV address: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Still need public key for transaction signature
 	privKey := secp256k1.PrivKeyFromBytes(privKeyBytes)
 	pubKey := privKey.PubKey()
 	pubKeyBytes := pubKey.SerializeCompressed()
-
-	fromAddr, err := wallet.PubKeyToAddress(pubKeyBytes)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error deriving address: %v\n", err)
-		os.Exit(1)
-	}
 
 	// Parse amount and fee
 	amount, err := strconv.ParseInt(*amountStr, 10, 64)

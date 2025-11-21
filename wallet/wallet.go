@@ -23,6 +23,11 @@ func GenerateKeypair() (privKey []byte, pubKey []byte, err error) {
 }
 
 // PubKeyToAddress converts a public key to a bech32 address with prefix "arcv"
+//
+// DEPRECATED: This function uses the old SHA256-based derivation.
+// Use address.PrivateKeyToARCVAddress() instead for Ethereum compatibility.
+//
+// This function is kept for backward compatibility only.
 func PubKeyToAddress(pubKey []byte) (string, error) {
 	// Hash the public key using SHA256
 	hash := sha256.Sum256(pubKey)

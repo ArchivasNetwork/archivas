@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
+	"github.com/ArchivasNetwork/archivas/address"
 	"github.com/ArchivasNetwork/archivas/logging"
 	"github.com/ArchivasNetwork/archivas/metrics"
 	"github.com/ArchivasNetwork/archivas/pospace"
@@ -360,16 +361,22 @@ func loadPlots(dir string) ([]*pospace.PlotFile, error) {
 }
 
 func deriveFarmerAddress(privKey []byte) (string, []byte, error) {
-	// Import secp256k1 to derive public key from private key
-	// We need to add this import at the top
+	// Use UNIFIED Ethereum-compatible derivation
+	evmAddr, err := address.PrivateKeyToEVMAddress(privKey)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to derive EVM address: %w", err)
+	}
+
+	// Encode as ARCV for display
+	arcvAddr, err := address.EncodeARCVAddress(evmAddr, "arcv")
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to encode ARCV address: %w", err)
+	}
+
+	// Still need public key for plot verification
 	privKeyObj := secp256k1.PrivKeyFromBytes(privKey)
 	pubKey := privKeyObj.PubKey()
 	pubKeyBytes := pubKey.SerializeCompressed()
 
-	addr, err := wallet.PubKeyToAddress(pubKeyBytes)
-	if err != nil {
-		return "", nil, err
-	}
-
-	return addr, pubKeyBytes, nil
+	return arcvAddr, pubKeyBytes, nil
 }
