@@ -44,10 +44,13 @@ func (a *WorldStateAdapter) SyncFromWorldState() {
 			continue
 		}
 		
-		// Convert int64 balance to big.Int
-		// RCHV uses same base units as ETH (1 RCHV = 10^8 base units, like satoshis)
-		// For MetaMask compatibility, we can treat RCHV base units as Wei
+		// Convert int64 balance to big.Int with Wei conversion
+		// Archivas: 1 RCHV = 10^8 base units (like Bitcoin satoshis)
+		// Ethereum: 1 ETH = 10^18 Wei
+		// Multiply by 10^10 to convert Archivas base units to Wei
 		balance := big.NewInt(acct.Balance)
+		multiplier := big.NewInt(10000000000) // 10^10
+		balance.Mul(balance, multiplier)
 		
 		// Set balance in EVM StateDB
 		a.MemoryStateDB.SetBalance(evmAddr, balance)
@@ -71,7 +74,13 @@ func (a *WorldStateAdapter) GetBalance(addr address.EVMAddress) *big.Int {
 	
 	// Check if this address exists in WorldState
 	if acct, exists := a.worldState.Accounts[arcvAddr]; exists {
-		return big.NewInt(acct.Balance)
+		// Archivas uses 8 decimals (10^8 base units per RCHV)
+		// Ethereum uses 18 decimals (10^18 Wei per ETH)
+		// Convert: multiply by 10^10 to convert Archivas base units to Wei
+		balance := big.NewInt(acct.Balance)
+		multiplier := big.NewInt(10000000000) // 10^10
+		balance.Mul(balance, multiplier)
+		return balance
 	}
 	
 	// Fall back to MemoryStateDB for addresses not in WorldState
