@@ -38,7 +38,7 @@ func (a *WorldStateAdapter) SyncFromWorldState() {
 	synced := 0
 	for arcvAddr, acct := range a.worldState.Accounts {
 		// Convert arcv address to EVM address
-		evmAddr, err := address.ParseAddress(arcvAddr)
+		evmAddr, err := address.ParseAddress(arcvAddr, "arcv")
 		if err != nil {
 			log.Printf("[evm-adapter] Failed to parse address %s: %v", arcvAddr, err)
 			continue
