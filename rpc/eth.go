@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/ArchivasNetwork/archivas/address"
@@ -100,6 +101,10 @@ func (h *ETHHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		result, err = h.getTransactionCount_handler(req.Params)
 	case "eth_gasPrice":
 		result, err = h.gasPrice_handler()
+	case "eth_getBlockByNumber":
+		result, err = h.getBlockByNumber_handler(req.Params)
+	case "eth_syncing":
+		result, err = h.syncing_handler()
 	case "net_version":
 		result, err = h.netVersion_handler()
 	default:
@@ -277,6 +282,78 @@ func (h *ETHHandler) gasPrice_handler() (string, error) {
 // net_version returns the network ID
 func (h *ETHHandler) netVersion_handler() (string, error) {
 	return fmt.Sprintf("%d", h.chainID), nil
+}
+
+// eth_getBlockByNumber returns block information by number
+func (h *ETHHandler) getBlockByNumber_handler(params json.RawMessage) (interface{}, error) {
+	var p []interface{}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, err
+	}
+	if len(p) < 1 {
+		return nil, fmt.Errorf("missing block number parameter")
+	}
+
+	blockNumStr, ok := p[0].(string)
+	if !ok {
+		return nil, fmt.Errorf("invalid block number parameter")
+	}
+
+	var blockNum uint64
+	if blockNumStr == "latest" || blockNumStr == "pending" {
+		blockNum = h.getHeight()
+	} else if blockNumStr == "earliest" {
+		blockNum = 0
+	} else {
+		// Parse hex block number
+		blockNumStr = strings.TrimPrefix(blockNumStr, "0x")
+		var err error
+		blockNum, err = strconv.ParseUint(blockNumStr, 16, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid block number: %v", err)
+		}
+	}
+
+	// Get block from node
+	block, err := h.getBlock(blockNum)
+	if err != nil {
+		return nil, nil // Return null for not found
+	}
+
+	// Include full transaction objects or just hashes?
+	fullTx := false
+	if len(p) > 1 {
+		if fullTxBool, ok := p[1].(bool); ok {
+			fullTx = fullTxBool
+		}
+	}
+
+	// Format block response (simplified for now)
+	response := map[string]interface{}{
+		"number":     fmt.Sprintf("0x%x", blockNum),
+		"hash":       fmt.Sprintf("0x%x", block.Hash()),
+		"parentHash": fmt.Sprintf("0x%x", block.PrevHash),
+		"timestamp":  fmt.Sprintf("0x%x", block.TimestampUnix),
+		"difficulty": fmt.Sprintf("0x%x", block.Difficulty),
+		"gasLimit":   fmt.Sprintf("0x%x", block.GasLimit),
+		"gasUsed":    fmt.Sprintf("0x%x", block.GasUsed),
+		"miner":      "0x0000000000000000000000000000000000000000", // PoST doesn't have miners
+		"transactions": []interface{}{}, // Simplified
+	}
+
+	if !fullTx {
+		// Return array of transaction hashes
+		response["transactions"] = []interface{}{}
+	}
+
+	return response, nil
+}
+
+// eth_syncing returns syncing status
+func (h *ETHHandler) syncing_handler() (interface{}, error) {
+	// For now, always return false (not syncing)
+	// In a full implementation, this would check if the node is in IBD mode
+	return false, nil
 }
 
 // Helper functions

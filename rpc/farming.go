@@ -500,6 +500,10 @@ func (s *FarmingServer) handleJSONRPC(w http.ResponseWriter, method string, para
 		result, err = s.ethHandler.getTransactionCount_handler(params)
 	case "eth_gasPrice":
 		result, err = s.ethHandler.gasPrice_handler()
+	case "eth_getBlockByNumber":
+		result, err = s.ethHandler.getBlockByNumber_handler(params)
+	case "eth_syncing":
+		result, err = s.ethHandler.syncing_handler()
 	case "eth_call":
 		result, err = s.ethHandler.call_handler(params)
 	case "eth_sendRawTransaction":
