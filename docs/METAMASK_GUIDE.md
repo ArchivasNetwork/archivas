@@ -26,7 +26,7 @@ Archivas uses a **dual address system**:
 
 ```
 Network Name:       Archivas Betanet
-RPC URL:            http://51.89.11.4:8545
+RPC URL:            https://seed3.betanet.archivas.ai
 Chain ID:           1644
 Currency Symbol:    RCHV
 Block Explorer URL: (leave empty)
@@ -47,11 +47,13 @@ Currency Symbol:    RCHV
 Block Explorer URL: (leave empty)
 ```
 
-### Option C: Using Seed Domains
+### Option C: Using Seed Domains (HTTPS)
 
 ```
-RPC URL: http://seed3.betanet.archivas.ai:8545
+RPC URL: https://seed3.betanet.archivas.ai
 ```
+
+**Note:** All seed domains now support HTTPS with SSL certificates!
 
 ---
 
