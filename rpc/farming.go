@@ -15,12 +15,14 @@ import (
 	"time"
 
 	"github.com/ArchivasNetwork/archivas/config"
+	"github.com/ArchivasNetwork/archivas/evm"
 	"github.com/ArchivasNetwork/archivas/internal/buildinfo"
 	"github.com/ArchivasNetwork/archivas/ledger"
 	"github.com/ArchivasNetwork/archivas/mempool"
 	"github.com/ArchivasNetwork/archivas/metrics"
 	txv1 "github.com/ArchivasNetwork/archivas/pkg/tx/v1"
 	"github.com/ArchivasNetwork/archivas/pospace"
+	"github.com/ArchivasNetwork/archivas/types"
 	"github.com/ArchivasNetwork/archivas/wallet"
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -45,6 +47,7 @@ type FarmingServer struct {
 	worldState    *ledger.WorldState
 	mempool       *mempool.Mempool
 	nodeState     NodeState
+	ethHandler    *ETHHandler // ETH JSON-RPC handler
 	faucetEnabled bool
 	faucetKey     []byte
 	faucetAddress string
@@ -94,10 +97,44 @@ type metricsTarget struct {
 
 // NewFarmingServer creates a new farming-enabled RPC server
 func NewFarmingServer(ws *ledger.WorldState, mp *mempool.Mempool, ns NodeState) *FarmingServer {
+	// Create EVM StateDB adapter that bridges WorldState with EVM
+	stateDB := evm.NewWorldStateAdapter(ws)
+	
+	// Initialize ETH JSON-RPC handler
+	ethHandler := NewETHHandler(
+		1644, // Betanet chain ID
+		stateDB,
+		func() uint64 {
+			height, _, _ := ns.GetStatus()
+			return height
+		},
+		func(height uint64) (*types.Block, error) {
+			blockRaw, err := ns.GetBlockByHeight(height)
+			if err != nil {
+				return nil, err
+			}
+			// Type assertion to *types.Block
+			block, ok := blockRaw.(*types.Block)
+			if !ok {
+				return nil, fmt.Errorf("invalid block type")
+			}
+			return block, nil
+		},
+		func(txHash [32]byte) (*types.Receipt, error) {
+			// TODO: Implement receipt lookup
+			return nil, fmt.Errorf("receipt not found")
+		},
+		func(tx *types.EVMTransaction) error {
+			// TODO: Implement EVM transaction submission
+			return fmt.Errorf("EVM transaction submission not yet implemented")
+		},
+	)
+	
 	return &FarmingServer{
 		worldState:    ws,
 		mempool:       mp,
 		nodeState:     ns,
+		ethHandler:    ethHandler,
 		faucetEnabled: false,
 		faucetLimit:   make(map[string]time.Time),
 	}
@@ -440,28 +477,35 @@ func (s *FarmingServer) handleRoot(w http.ResponseWriter, r *http.Request) {
 
 // handleJSONRPC routes JSON-RPC 2.0 requests to appropriate handlers
 func (s *FarmingServer) handleJSONRPC(w http.ResponseWriter, method string, params json.RawMessage, id interface{}) {
+	// Delegate all ETH JSON-RPC methods to the ETHHandler
+	// This includes: eth_chainId, eth_blockNumber, eth_getBalance, eth_getCode, 
+	// eth_getTransactionReceipt, eth_getTransactionCount, eth_gasPrice, 
+	// eth_call, eth_sendRawTransaction, net_version
+	
 	var result interface{}
 	var err error
 
 	switch method {
 	case "eth_chainId":
-		// Return Betanet chain ID: 1644 (0x66c)
-		result = fmt.Sprintf("0x%x", uint64(1644))
-	
+		result, err = s.ethHandler.chainID_handler()
 	case "eth_blockNumber":
-		height, _, _ := s.nodeState.GetStatus()
-		result = fmt.Sprintf("0x%x", height)
-	
+		result, err = s.ethHandler.blockNumber_handler()
+	case "eth_getBalance":
+		result, err = s.ethHandler.getBalance_handler(params)
+	case "eth_getCode":
+		result, err = s.ethHandler.getCode_handler(params)
+	case "eth_getTransactionReceipt":
+		result, err = s.ethHandler.getTransactionReceipt_handler(params)
+	case "eth_getTransactionCount":
+		result, err = s.ethHandler.getTransactionCount_handler(params)
+	case "eth_gasPrice":
+		result, err = s.ethHandler.gasPrice_handler()
+	case "eth_call":
+		result, err = s.ethHandler.call_handler(params)
+	case "eth_sendRawTransaction":
+		result, err = s.ethHandler.sendRawTransaction_handler(params)
 	case "net_version":
-		// Return network ID as string
-		result = "1644"
-	
-	case "eth_getBalance", "eth_getCode", "eth_getTransactionReceipt", 
-	     "eth_getTransactionCount", "eth_gasPrice", "eth_call", "eth_sendRawTransaction":
-		// These require full EVM integration - return not implemented for now
-		writeJSONRPCError(w, id, -32601, "Method not yet implemented")
-		return
-	
+		result, err = s.ethHandler.netVersion_handler()
 	default:
 		writeJSONRPCError(w, id, -32601, "Method not found")
 		return
