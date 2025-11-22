@@ -840,7 +840,7 @@ func ensureValidMinerAddress(addr string) string {
 	
 	// If it starts with "arcv" or "arcv1", it's a Bech32 address - convert it
 	if strings.HasPrefix(addr, "arcv") {
-		evmAddr, err := address.ParseAnyAddress(addr)
+		evmAddr, err := address.ParseAddress(addr, "arcv")
 		if err != nil {
 			// Failed to parse ARCV address, return zero
 			return zeroAddress
