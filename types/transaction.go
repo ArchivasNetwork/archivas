@@ -22,9 +22,11 @@ type Transaction interface {
 type TxType uint8
 
 const (
-	TxTypeLegacy    TxType = 0 // Legacy Archivas transaction (pre-EVM)
-	TxTypeEVMCall   TxType = 1 // EVM contract call or transfer
-	TxTypeEVMDeploy TxType = 2 // EVM contract deployment
+	TxTypeLegacy    TxType = 0 // Legacy Ethereum transaction (EIP-155)
+	TxTypeEIP2930   TxType = 1 // EIP-2930 access list transaction
+	TxTypeEIP1559   TxType = 2 // EIP-1559 dynamic fee transaction
+	TxTypeEVMCall   TxType = 3 // EVM contract call or transfer (legacy Archivas)
+	TxTypeEVMDeploy TxType = 4 // EVM contract deployment (legacy Archivas)
 )
 
 // EVMTransaction represents an EVM-compatible transaction

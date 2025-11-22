@@ -4,6 +4,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
+	"math/big"
 	"net/http"
 	"strconv"
 	"strings"
@@ -11,6 +13,7 @@ import (
 	"github.com/ArchivasNetwork/archivas/address"
 	"github.com/ArchivasNetwork/archivas/evm"
 	"github.com/ArchivasNetwork/archivas/types"
+	gethtypes "github.com/ethereum/go-ethereum/core/types"
 )
 
 // ETHHandler provides Ethereum JSON-RPC compatibility
@@ -236,7 +239,7 @@ func (h *ETHHandler) call_handler(params json.RawMessage) (string, error) {
 func (h *ETHHandler) sendRawTransaction_handler(params json.RawMessage) (string, error) {
 	var p []interface{}
 	if err := json.Unmarshal(params, &p); err != nil {
-		return "", err
+		return "", fmt.Errorf("invalid params: %v", err)
 	}
 	if len(p) < 1 {
 		return "", fmt.Errorf("missing transaction data parameter")
@@ -244,18 +247,30 @@ func (h *ETHHandler) sendRawTransaction_handler(params json.RawMessage) (string,
 
 	txDataStr, ok := p[0].(string)
 	if !ok {
-		return "", fmt.Errorf("invalid transaction data parameter")
+		return "", fmt.Errorf("invalid transaction data parameter: expected hex string")
 	}
 
-	// Parse raw transaction
-	tx, err := parseRawTransaction(txDataStr)
+	// Remove 0x prefix
+	txDataStr = strings.TrimPrefix(txDataStr, "0x")
+	
+	// Decode hex
+	rawTxBytes, err := hex.DecodeString(txDataStr)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("invalid transaction hex: %v", err)
+	}
+	
+	log.Printf("[eth_sendRawTransaction] Received tx: %d bytes, type prefix: 0x%02x", 
+		len(rawTxBytes), rawTxBytes[0])
+
+	// Parse raw transaction using go-ethereum for full typed tx support
+	tx, err := parseRawTransaction(rawTxBytes)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse transaction: %v", err)
 	}
 
 	// Submit transaction
 	if err := h.submitTx(tx); err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to submit transaction: %v", err)
 	}
 
 	// Return transaction hash
@@ -283,7 +298,24 @@ func (h *ETHHandler) getTransactionCount_handler(params json.RawMessage) (string
 		return "", err
 	}
 
+	// Check block parameter (latest/pending/earliest)
+	blockParam := "latest"
+	if len(p) > 1 {
+		if blockStr, ok := p[1].(string); ok {
+			blockParam = blockStr
+		}
+	}
+
 	nonce := h.stateDB.GetNonce(addr)
+	
+	// For "pending", we would add mempool pending tx count
+	// For now, return the same as "latest" since we don't have a mempool yet
+	// TODO: Implement proper pending nonce when mempool is added
+	if blockParam == "pending" {
+		log.Printf("[eth_getTransactionCount] pending nonce requested for %s, returning latest=%d (mempool not yet implemented)", 
+			addr.Hex(), nonce)
+	}
+	
 	return fmt.Sprintf("0x%x", nonce), nil
 }
 
@@ -631,9 +663,77 @@ func parseHash(s string) ([32]byte, error) {
 	return hash, nil
 }
 
-func parseRawTransaction(s string) (*types.EVMTransaction, error) {
-	// Simplified - would need full RLP decoding in production
-	return nil, fmt.Errorf("transaction parsing not implemented yet")
+func parseRawTransaction(rawTxBytes []byte) (*types.EVMTransaction, error) {
+	// Use go-ethereum to decode typed transactions (legacy, EIP-2930, EIP-1559)
+	var gethTx gethtypes.Transaction
+	if err := gethTx.UnmarshalBinary(rawTxBytes); err != nil {
+		return nil, fmt.Errorf("failed to decode RLP transaction: %v", err)
+	}
+	
+	// Log transaction type
+	txType := "legacy"
+	if gethTx.Type() == gethtypes.AccessListTxType {
+		txType = "EIP-2930"
+	} else if gethTx.Type() == gethtypes.DynamicFeeTxType {
+		txType = "EIP-1559"
+	}
+	log.Printf("[parseRawTransaction] Decoded %s transaction: nonce=%d, gasLimit=%d",
+		txType, gethTx.Nonce(), gethTx.Gas())
+	
+	// Recover sender using chainId 1644
+	signer := gethtypes.LatestSignerForChainID(big.NewInt(1644))
+	from, err := gethtypes.Sender(signer, &gethTx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to recover sender: %v (wrong chainId? expected 1644)", err)
+	}
+	
+	log.Printf("[parseRawTransaction] Sender: %s", from.Hex())
+	
+	// Convert go-ethereum transaction to Archivas EVMTransaction
+	evmTx := &types.EVMTransaction{
+		NonceVal:    gethTx.Nonce(),
+		GasLimitVal: gethTx.Gas(),
+		ValueVal:    gethTx.Value(),
+		DataVal:     gethTx.Data(),
+	}
+	
+	// Handle different transaction types for gas price
+	if gethTx.Type() == gethtypes.DynamicFeeTxType {
+		// EIP-1559: use maxFeePerGas for now (simplified)
+		// In full implementation, calculate effectiveGasPrice based on baseFee
+		evmTx.TypeFlag = types.TxTypeEIP1559
+		evmTx.GasPriceVal = gethTx.GasFeeCap()
+		log.Printf("[parseRawTransaction] EIP-1559: maxFeePerGas=%s, maxPriorityFeePerGas=%s",
+			gethTx.GasFeeCap(), gethTx.GasTipCap())
+	} else if gethTx.Type() == gethtypes.AccessListTxType {
+		// EIP-2930: access list transaction
+		evmTx.TypeFlag = types.TxTypeEIP2930
+		evmTx.GasPriceVal = gethTx.GasPrice()
+	} else {
+		// Legacy transaction
+		evmTx.TypeFlag = types.TxTypeLegacy
+		evmTx.GasPriceVal = gethTx.GasPrice()
+	}
+	
+	// Set from address
+	var fromAddr address.EVMAddress
+	copy(fromAddr[:], from.Bytes())
+	evmTx.FromAddr = fromAddr
+	
+	// Set to address (may be nil for contract creation)
+	if gethTx.To() != nil {
+		toAddr := address.EVMAddress{}
+		copy(toAddr[:], gethTx.To().Bytes())
+		evmTx.ToAddr = &toAddr
+	}
+	
+	// Set signature fields (V, R, S)
+	v, r, s := gethTx.RawSignatureValues()
+	evmTx.V = v
+	evmTx.R = r
+	evmTx.S = s
+	
+	return evmTx, nil
 }
 
 func formatReceipt(receipt *types.Receipt) map[string]interface{} {
