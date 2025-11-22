@@ -19,8 +19,8 @@ type ETHHandler struct {
 	chainID      uint64
 	stateDB      evm.StateDB
 	getHeight    func() uint64
-	getBlock     func(height uint64) (*types.Block, error)
-	getBlockByHash func(hash [32]byte) (*types.Block, error)
+	getBlock     func(height uint64) (interface{}, error) // Changed to interface{} to handle both legacy and types.Block
+	getBlockByHash func(hash [32]byte) (interface{}, error) // Changed to interface{}
 	getReceipt   func(txHash [32]byte) (*types.Receipt, error)
 	submitTx     func(tx *types.EVMTransaction) error
 }
@@ -30,8 +30,8 @@ func NewETHHandler(
 	chainID uint64,
 	stateDB evm.StateDB,
 	getHeight func() uint64,
-	getBlock func(height uint64) (*types.Block, error),
-	getBlockByHash func(hash [32]byte) (*types.Block, error),
+	getBlock func(height uint64) (interface{}, error), // Changed to interface{}
+	getBlockByHash func(hash [32]byte) (interface{}, error), // Changed to interface{}
 	getReceipt func(txHash [32]byte) (*types.Receipt, error),
 	submitTx func(tx *types.EVMTransaction) error,
 ) *ETHHandler {
@@ -323,10 +323,15 @@ func (h *ETHHandler) getBlockByNumber_handler(params json.RawMessage) (interface
 		}
 	}
 
-	// Get block from node
-	block, err := h.getBlock(blockNum)
+	// Get block from node (returns interface{} - either *types.Block or map[string]interface{})
+	blockRaw, err := h.getBlock(blockNum)
 	if err != nil {
 		return nil, nil // Return null for not found
+	}
+
+	// Check if block is nil
+	if blockRaw == nil {
+		return nil, nil
 	}
 
 	// Include full transaction objects or just hashes?
@@ -337,25 +342,17 @@ func (h *ETHHandler) getBlockByNumber_handler(params json.RawMessage) (interface
 		}
 	}
 
-	// Format block response (simplified for now)
-	response := map[string]interface{}{
-		"number":     fmt.Sprintf("0x%x", blockNum),
-		"hash":       fmt.Sprintf("0x%x", block.Hash()),
-		"parentHash": fmt.Sprintf("0x%x", block.PrevHash),
-		"timestamp":  fmt.Sprintf("0x%x", block.TimestampUnix),
-		"difficulty": fmt.Sprintf("0x%x", block.Difficulty),
-		"gasLimit":   fmt.Sprintf("0x%x", block.GasLimit),
-		"gasUsed":    fmt.Sprintf("0x%x", block.GasUsed),
-		"miner":      "0x0000000000000000000000000000000000000000", // PoST doesn't have miners
-		"transactions": []interface{}{}, // Simplified
+	// Try to convert to legacy block format first (map)
+	if legacyBlock, ok := blockRaw.(map[string]interface{}); ok {
+		return convertLegacyBlockToEthBlock(legacyBlock, fullTx), nil
 	}
 
-	if !fullTx {
-		// Return array of transaction hashes
-		response["transactions"] = []interface{}{}
+	// Try to convert to types.Block
+	if typedBlock, ok := blockRaw.(*types.Block); ok {
+		return convertTypesBlockToEthBlock(typedBlock, fullTx), nil
 	}
 
-	return response, nil
+	return nil, fmt.Errorf("unexpected block type")
 }
 
 // eth_syncing returns syncing status
@@ -385,10 +382,15 @@ func (h *ETHHandler) getBlockByHash_handler(params json.RawMessage) (interface{}
 		return nil, fmt.Errorf("invalid block hash: %v", err)
 	}
 
-	// Get block from node by hash
-	block, err := h.getBlockByHash(blockHash)
+	// Get block from node by hash (returns interface{} - either *types.Block or map[string]interface{})
+	blockRaw, err := h.getBlockByHash(blockHash)
 	if err != nil {
 		return nil, nil // Return null for not found
+	}
+
+	// Check if block is nil
+	if blockRaw == nil {
+		return nil, nil
 	}
 
 	// Include full transaction objects or just hashes?
@@ -399,27 +401,17 @@ func (h *ETHHandler) getBlockByHash_handler(params json.RawMessage) (interface{}
 		}
 	}
 
-	// Format block response (similar to getBlockByNumber)
-	response := map[string]interface{}{
-		"number":     fmt.Sprintf("0x%x", block.Height),
-		"hash":       fmt.Sprintf("0x%x", block.Hash()),
-		"parentHash": fmt.Sprintf("0x%x", block.PrevHash),
-		"timestamp":  fmt.Sprintf("0x%x", block.TimestampUnix),
-		"difficulty": fmt.Sprintf("0x%x", block.Difficulty),
-		"gasLimit":   fmt.Sprintf("0x%x", block.GasLimit),
-		"gasUsed":    fmt.Sprintf("0x%x", block.GasUsed),
-		"miner":      block.FarmerAddr.Hex(), // PoST farmer address
-		"stateRoot":  fmt.Sprintf("0x%x", block.StateRoot),
-		"receiptsRoot": fmt.Sprintf("0x%x", block.ReceiptsRoot),
-		"transactions": []interface{}{}, // Simplified
+	// Try to convert to legacy block format first (map)
+	if legacyBlock, ok := blockRaw.(map[string]interface{}); ok {
+		return convertLegacyBlockToEthBlock(legacyBlock, fullTx), nil
 	}
 
-	if !fullTx {
-		// Return array of transaction hashes
-		response["transactions"] = []interface{}{}
+	// Try to convert to types.Block
+	if typedBlock, ok := blockRaw.(*types.Block); ok {
+		return convertTypesBlockToEthBlock(typedBlock, fullTx), nil
 	}
 
-	return response, nil
+	return nil, fmt.Errorf("unexpected block type")
 }
 
 // eth_estimateGas estimates gas for a transaction
@@ -569,17 +561,34 @@ func (h *ETHHandler) feeHistory_handler(params json.RawMessage) (map[string]inte
 	// Calculate gas used ratio for each block
 	for i := uint64(0); i < blockCount; i++ {
 		blockNum := oldestBlock + i
-		block, err := h.getBlock(blockNum)
-		if err != nil {
+		blockRaw, err := h.getBlock(blockNum)
+		if err != nil || blockRaw == nil {
 			// If block not found, use 0 ratio
 			gasUsedRatio[i] = 0.0
 			continue
 		}
 
-		if block.GasLimit == 0 {
+		// Extract gas used and gas limit depending on block type
+		var gasUsed, gasLimit uint64
+		
+		if _, ok := blockRaw.(map[string]interface{}); ok {
+			// Legacy block format - no EVM gas fields, use defaults
+			gasUsed = 0
+			gasLimit = 30000000 // 30M gas (standard)
+		} else if typedBlock, ok := blockRaw.(*types.Block); ok {
+			// types.Block format - has EVM gas fields
+			gasUsed = typedBlock.GasUsed
+			gasLimit = typedBlock.GasLimit
+		} else {
+			// Unknown format
+			gasUsedRatio[i] = 0.0
+			continue
+		}
+
+		if gasLimit == 0 {
 			gasUsedRatio[i] = 0.0
 		} else {
-			gasUsedRatio[i] = float64(block.GasUsed) / float64(block.GasLimit)
+			gasUsedRatio[i] = float64(gasUsed) / float64(gasLimit)
 		}
 	}
 
@@ -676,5 +685,108 @@ func writeError(w http.ResponseWriter, id interface{}, code int, message string)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK) // JSON-RPC errors still return 200
 	json.NewEncoder(w).Encode(resp)
+}
+
+// convertLegacyBlockToEthBlock converts Archivas legacy block format (map) to Ethereum format
+func convertLegacyBlockToEthBlock(legacyBlock map[string]interface{}, fullTx bool) map[string]interface{} {
+	// Extract fields from legacy block
+	heightVal, _ := legacyBlock["height"].(uint64)
+	hashVal, _ := legacyBlock["hash"].(string)
+	prevHashVal, _ := legacyBlock["prevHash"].(string)
+	timestampVal, _ := legacyBlock["timestamp"].(int64)
+	difficultyVal, _ := legacyBlock["difficulty"].(uint64)
+	farmerAddr, _ := legacyBlock["farmerAddr"].(string)
+
+	// For Ethereum compatibility
+	ethBlock := map[string]interface{}{
+		"number":          fmt.Sprintf("0x%x", heightVal),
+		"hash":            ensureHexPrefix(hashVal),
+		"parentHash":      ensureHexPrefix(prevHashVal),
+		"nonce":           "0x0000000000000000", // PoST doesn't use nonce
+		"sha3Uncles":      "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
+		"logsBloom":       "0x" + strings.Repeat("0", 512), // Empty bloom filter
+		"transactionsRoot": "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
+		"stateRoot":       "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
+		"receiptsRoot":    "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
+		"miner":           farmerAddr, // Farmer acts as miner
+		"difficulty":      fmt.Sprintf("0x%x", difficultyVal),
+		"totalDifficulty": fmt.Sprintf("0x%x", difficultyVal), // Simplified
+		"extraData":       "0x",
+		"size":            "0x400", // Placeholder size
+		"gasLimit":        "0x1c9c380", // 30M gas (standard)
+		"gasUsed":         "0x0", // No EVM txs in legacy blocks
+		"timestamp":       fmt.Sprintf("0x%x", timestampVal),
+		"transactions":    []interface{}{}, // Legacy blocks don't have EVM txs
+		"uncles":          []interface{}{},
+	}
+
+	return ethBlock
+}
+
+// convertTypesBlockToEthBlock converts types.Block to Ethereum format
+func convertTypesBlockToEthBlock(block *types.Block, fullTx bool) map[string]interface{} {
+	// Build transaction list
+	transactions := make([]interface{}, 0)
+	if !fullTx {
+		// Just hashes
+		for _, tx := range block.Txs {
+			txHash := tx.Hash()
+			transactions = append(transactions, "0x"+hex.EncodeToString(txHash[:]))
+		}
+	} else {
+		// Full transaction objects (simplified for now)
+		for _, tx := range block.Txs {
+			txHash := tx.Hash()
+			transactions = append(transactions, map[string]interface{}{
+				"hash":  "0x" + hex.EncodeToString(txHash[:]),
+				"nonce": fmt.Sprintf("0x%x", tx.Nonce()),
+				"from":  tx.From().Hex(),
+				"gas":   fmt.Sprintf("0x%x", tx.Gas()),
+				// Add more fields as needed
+			})
+		}
+	}
+
+	// Compute block hash
+	blockHash := block.Hash()
+	
+	// Compute transactions root (use helper or compute from block)
+	txRoot := [32]byte{} // Simplified - would need proper merkle tree
+	if len(block.Txs) > 0 {
+		// Use first tx hash as placeholder
+		txRoot = block.Txs[0].Hash()
+	}
+
+	ethBlock := map[string]interface{}{
+		"number":           fmt.Sprintf("0x%x", block.Height),
+		"hash":             "0x" + hex.EncodeToString(blockHash[:]),
+		"parentHash":       "0x" + hex.EncodeToString(block.PrevHash[:]),
+		"nonce":            "0x0000000000000000",
+		"sha3Uncles":       "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
+		"logsBloom":        "0x" + strings.Repeat("0", 512),
+		"transactionsRoot": "0x" + hex.EncodeToString(txRoot[:]),
+		"stateRoot":        "0x" + hex.EncodeToString(block.StateRoot[:]),
+		"receiptsRoot":     "0x" + hex.EncodeToString(block.ReceiptsRoot[:]),
+		"miner":            block.FarmerAddr.Hex(),
+		"difficulty":       fmt.Sprintf("0x%x", block.Difficulty),
+		"totalDifficulty":  fmt.Sprintf("0x%x", block.CumulativeWork),
+		"extraData":        "0x",
+		"size":             "0x400", // Placeholder - block size not tracked
+		"gasLimit":         fmt.Sprintf("0x%x", block.GasLimit),
+		"gasUsed":          fmt.Sprintf("0x%x", block.GasUsed),
+		"timestamp":        fmt.Sprintf("0x%x", block.TimestampUnix),
+		"transactions":     transactions,
+		"uncles":           []interface{}{},
+	}
+
+	return ethBlock
+}
+
+// ensureHexPrefix adds 0x prefix if not present
+func ensureHexPrefix(s string) string {
+	if strings.HasPrefix(s, "0x") {
+		return s
+	}
+	return "0x" + s
 }
 

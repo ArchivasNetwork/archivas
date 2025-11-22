@@ -109,29 +109,15 @@ func NewFarmingServer(ws *ledger.WorldState, mp *mempool.Mempool, ns NodeState) 
 			height, _, _ := ns.GetStatus()
 			return height
 		},
-		func(height uint64) (*types.Block, error) {
-			blockRaw, err := ns.GetBlockByHeight(height)
-			if err != nil {
-				return nil, err
-			}
-			// Type assertion to *types.Block
-			block, ok := blockRaw.(*types.Block)
-			if !ok {
-				return nil, fmt.Errorf("invalid block type")
-			}
-			return block, nil
+		func(height uint64) (interface{}, error) {
+			// Pass through interface{} without type assertion
+			// ETH handler will handle both legacy (map) and types.Block formats
+			return ns.GetBlockByHeight(height)
 		},
-		func(hash [32]byte) (*types.Block, error) {
-			blockRaw, err := ns.GetBlockByHash(hash)
-			if err != nil {
-				return nil, err
-			}
-			// Type assertion to *types.Block
-			block, ok := blockRaw.(*types.Block)
-			if !ok {
-				return nil, fmt.Errorf("invalid block type")
-			}
-			return block, nil
+		func(hash [32]byte) (interface{}, error) {
+			// Pass through interface{} without type assertion
+			// ETH handler will handle both legacy (map) and types.Block formats
+			return ns.GetBlockByHash(hash)
 		},
 		func(txHash [32]byte) (*types.Receipt, error) {
 			// TODO: Implement receipt lookup
