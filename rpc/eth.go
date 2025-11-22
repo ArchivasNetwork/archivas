@@ -161,7 +161,10 @@ func (h *ETHHandler) getBalance_handler(params json.RawMessage) (string, error) 
 	}
 
 	balance := h.stateDB.GetBalance(addr)
-	return fmt.Sprintf("0x%x", balance), nil
+	// Convert from Archivas 8-decimal format to Ethereum 18-decimal Wei format
+	// Multiply by 10^10 (ten billion) to shift from 8 decimals to 18 decimals
+	balanceWei := balance * 10_000_000_000 // 10^10
+	return fmt.Sprintf("0x%x", balanceWei), nil
 }
 
 // eth_getCode returns the code at an address
