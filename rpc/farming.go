@@ -493,6 +493,13 @@ func (s *FarmingServer) handleRoot(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			
+			// Enforce max batch size to prevent overwhelming RPC
+			const maxBatchSize = 50
+			if len(batch) > maxBatchSize {
+				writeJSONRPCError(w, nil, -32600, fmt.Sprintf("Invalid Request: batch size %d exceeds maximum %d", len(batch), maxBatchSize))
+				return
+			}
+			
 			// Process batch
 			responses := make([]interface{}, 0, len(batch))
 			for _, req := range batch {
@@ -550,38 +557,67 @@ func (s *FarmingServer) processSingleRequest(req JSONRPCRequest) map[string]inte
 		}
 	}
 	
-	// Route to appropriate handler
-	result, err := s.routeJSONRPCMethod(req.Method, req.Params)
+	// Performance guardrail: timeout per request to prevent hanging
+	const requestTimeout = 5 * time.Second
 	
-	if err != nil {
-		// Check if it's a method not found error
-		if err.Error() == "Method not found" {
+	// Create result channel for timeout handling
+	type rpcResult struct {
+		result interface{}
+		err    error
+	}
+	resultChan := make(chan rpcResult, 1)
+	
+	// Run handler in goroutine with timeout
+	go func() {
+		result, err := s.routeJSONRPCMethod(req.Method, req.Params)
+		resultChan <- rpcResult{result: result, err: err}
+	}()
+	
+	// Wait for result or timeout
+	select {
+	case res := <-resultChan:
+		// Got result
+		if res.err != nil {
+			// Check if it's a method not found error
+			if res.err.Error() == "Method not found" {
+				return map[string]interface{}{
+					"jsonrpc": "2.0",
+					"id":      req.ID,
+					"error": map[string]interface{}{
+						"code":    -32601,
+						"message": "Method not found",
+					},
+				}
+			}
+			
+			// Other errors
 			return map[string]interface{}{
 				"jsonrpc": "2.0",
 				"id":      req.ID,
 				"error": map[string]interface{}{
-					"code":    -32601,
-					"message": "Method not found",
+					"code":    -32000,
+					"message": res.err.Error(),
 				},
 			}
 		}
 		
-		// Other errors
+		// Success response
+		return map[string]interface{}{
+			"jsonrpc": "2.0",
+			"id":      req.ID,
+			"result":  res.result,
+		}
+		
+	case <-time.After(requestTimeout):
+		// Timeout
 		return map[string]interface{}{
 			"jsonrpc": "2.0",
 			"id":      req.ID,
 			"error": map[string]interface{}{
 				"code":    -32000,
-				"message": err.Error(),
+				"message": fmt.Sprintf("request timeout after %v", requestTimeout),
 			},
 		}
-	}
-	
-	// Success response
-	return map[string]interface{}{
-		"jsonrpc": "2.0",
-		"id":      req.ID,
-		"result":  result,
 	}
 }
 
@@ -651,6 +687,20 @@ func (s *FarmingServer) routeJSONRPCMethod(method string, params json.RawMessage
 	case "eth_uninstallFilter":
 		// Return true (filter uninstalled)
 		return true, nil
+	
+	// Trace/debug methods (fast-fail to prevent Blockscout timeouts)
+	case "debug_traceTransaction":
+		return s.ethHandler.debugTraceTransaction_handler(params)
+	case "debug_traceBlockByNumber":
+		return s.ethHandler.debugTraceBlockByNumber_handler(params)
+	case "debug_traceBlockByHash":
+		return s.ethHandler.debugTraceBlockByHash_handler(params)
+	case "trace_block":
+		return s.ethHandler.traceBlock_handler(params)
+	case "trace_transaction":
+		return s.ethHandler.traceTransaction_handler(params)
+	case "trace_replayBlockTransactions":
+		return s.ethHandler.traceReplayBlockTransactions_handler(params)
 	
 	default:
 		return nil, fmt.Errorf("Method not found")

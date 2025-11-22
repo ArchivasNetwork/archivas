@@ -1004,3 +1004,39 @@ func (h *ETHHandler) getTransactionByBlockHashAndIndex_handler(params json.RawMe
 	return nil, nil
 }
 
+// =============================================================================
+// FAST-FAIL TRACE/DEBUG METHODS (for Blockscout compatibility)
+// =============================================================================
+// These methods are not supported by Archivas but must return fast JSON-RPC
+// errors to prevent Blockscout indexers from timing out.
+
+// debugTraceTransaction_handler returns immediate not-supported error
+func (h *ETHHandler) debugTraceTransaction_handler(params json.RawMessage) (interface{}, error) {
+	return nil, fmt.Errorf("debug_traceTransaction is not supported on Archivas Betanet")
+}
+
+// debugTraceBlockByNumber_handler returns immediate not-supported error
+func (h *ETHHandler) debugTraceBlockByNumber_handler(params json.RawMessage) (interface{}, error) {
+	return nil, fmt.Errorf("debug_traceBlockByNumber is not supported on Archivas Betanet")
+}
+
+// debugTraceBlockByHash_handler returns immediate not-supported error
+func (h *ETHHandler) debugTraceBlockByHash_handler(params json.RawMessage) (interface{}, error) {
+	return nil, fmt.Errorf("debug_traceBlockByHash is not supported on Archivas Betanet")
+}
+
+// traceBlock_handler returns immediate not-supported error
+func (h *ETHHandler) traceBlock_handler(params json.RawMessage) (interface{}, error) {
+	return nil, fmt.Errorf("trace_block is not supported on Archivas Betanet")
+}
+
+// traceTransaction_handler returns immediate not-supported error
+func (h *ETHHandler) traceTransaction_handler(params json.RawMessage) (interface{}, error) {
+	return nil, fmt.Errorf("trace_transaction is not supported on Archivas Betanet")
+}
+
+// traceReplayBlockTransactions_handler returns immediate not-supported error
+func (h *ETHHandler) traceReplayBlockTransactions_handler(params json.RawMessage) (interface{}, error) {
+	return nil, fmt.Errorf("trace_replayBlockTransactions is not supported on Archivas Betanet")
+}
+
