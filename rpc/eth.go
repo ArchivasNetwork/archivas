@@ -689,13 +689,44 @@ func writeError(w http.ResponseWriter, id interface{}, code int, message string)
 
 // convertLegacyBlockToEthBlock converts Archivas legacy block format (map) to Ethereum format
 func convertLegacyBlockToEthBlock(legacyBlock map[string]interface{}, fullTx bool) map[string]interface{} {
-	// Extract fields from legacy block
-	heightVal, _ := legacyBlock["height"].(uint64)
+	// Extract fields from legacy block - handle both direct types and JSON float64
+	var heightVal uint64
+	switch v := legacyBlock["height"].(type) {
+	case uint64:
+		heightVal = v
+	case float64:
+		heightVal = uint64(v)
+	case int:
+		heightVal = uint64(v)
+	}
+	
 	hashVal, _ := legacyBlock["hash"].(string)
 	prevHashVal, _ := legacyBlock["prevHash"].(string)
-	timestampVal, _ := legacyBlock["timestamp"].(int64)
-	difficultyVal, _ := legacyBlock["difficulty"].(uint64)
+	
+	var timestampVal int64
+	switch v := legacyBlock["timestamp"].(type) {
+	case int64:
+		timestampVal = v
+	case float64:
+		timestampVal = int64(v)
+	case int:
+		timestampVal = int64(v)
+	}
+	
+	var difficultyVal uint64
+	switch v := legacyBlock["difficulty"].(type) {
+	case uint64:
+		difficultyVal = v
+	case float64:
+		difficultyVal = uint64(v)
+	case int:
+		difficultyVal = uint64(v)
+	}
+	
 	farmerAddr, _ := legacyBlock["farmerAddr"].(string)
+	if farmerAddr == "" {
+		farmerAddr = "0x0000000000000000000000000000000000000000" // Genesis has no farmer
+	}
 
 	// For Ethereum compatibility
 	ethBlock := map[string]interface{}{
