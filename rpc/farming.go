@@ -515,6 +515,12 @@ func (s *FarmingServer) handleJSONRPC(w http.ResponseWriter, method string, para
 		result, err = s.ethHandler.gasPrice_handler()
 	case "eth_getBlockByNumber":
 		result, err = s.ethHandler.getBlockByNumber_handler(params)
+	case "eth_getBlockByHash":
+		result, err = s.ethHandler.getBlockByHash_handler(params)
+	case "eth_estimateGas":
+		result, err = s.ethHandler.estimateGas_handler(params)
+	case "eth_feeHistory":
+		result, err = s.ethHandler.feeHistory_handler(params)
 	case "eth_syncing":
 		result, err = s.ethHandler.syncing_handler()
 	case "eth_call":
