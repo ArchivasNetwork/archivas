@@ -23,6 +23,7 @@ type ETHHandler struct {
 	getBlockByHash func(hash [32]byte) (interface{}, error) // Changed to interface{}
 	getReceipt   func(txHash [32]byte) (*types.Receipt, error)
 	submitTx     func(tx *types.EVMTransaction) error
+	getPeerCount func() int // For net_peerCount
 }
 
 // NewETHHandler creates a new ETH RPC handler
@@ -34,6 +35,7 @@ func NewETHHandler(
 	getBlockByHash func(hash [32]byte) (interface{}, error), // Changed to interface{}
 	getReceipt func(txHash [32]byte) (*types.Receipt, error),
 	submitTx func(tx *types.EVMTransaction) error,
+	getPeerCount func() int,
 ) *ETHHandler {
 	return &ETHHandler{
 		chainID:        chainID,
@@ -43,6 +45,7 @@ func NewETHHandler(
 		getBlockByHash: getBlockByHash,
 		getReceipt:     getReceipt,
 		submitTx:       submitTx,
+		getPeerCount:   getPeerCount,
 	}
 }
 
@@ -821,5 +824,140 @@ func ensureHexPrefix(s string) string {
 		return s
 	}
 	return "0x" + s
+}
+
+// ==================== Blockscout-Required Methods ====================
+
+// web3_clientVersion returns the client version
+func (h *ETHHandler) web3ClientVersion_handler() (string, error) {
+	return "Archivas/v1.0.0/betanet", nil
+}
+
+// netPeerCount_handler returns the number of connected peers
+func (h *ETHHandler) netPeerCount_handler() (string, error) {
+	peerCount := h.getPeerCount()
+	return fmt.Sprintf("0x%x", peerCount), nil
+}
+
+// getLogs_handler returns logs matching the given filter
+func (h *ETHHandler) getLogs_handler(params json.RawMessage) ([]interface{}, error) {
+	// Parse filter params
+	var p []interface{}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, err
+	}
+	if len(p) < 1 {
+		return nil, fmt.Errorf("missing filter parameter")
+	}
+	
+	// TODO: Implement log filtering
+	// For now, return empty array (no logs)
+	return []interface{}{}, nil
+}
+
+// getTransactionByHash_handler returns transaction details by hash
+func (h *ETHHandler) getTransactionByHash_handler(params json.RawMessage) (interface{}, error) {
+	var p []interface{}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, err
+	}
+	if len(p) < 1 {
+		return nil, fmt.Errorf("missing transaction hash parameter")
+	}
+	
+	// TODO: Implement transaction lookup by hash
+	// For now, return null (transaction not found)
+	return nil, nil
+}
+
+// getStorageAt_handler returns the storage value at a given address and position
+func (h *ETHHandler) getStorageAt_handler(params json.RawMessage) (string, error) {
+	var p []interface{}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return "", err
+	}
+	if len(p) < 2 {
+		return "", fmt.Errorf("missing address or position parameter")
+	}
+	
+	addrStr, ok := p[0].(string)
+	if !ok {
+		return "", fmt.Errorf("invalid address parameter")
+	}
+	
+	positionStr, ok := p[1].(string)
+	if !ok {
+		return "", fmt.Errorf("invalid position parameter")
+	}
+	
+	// Parse address
+	addr, err := parseAddress(addrStr)
+	if err != nil {
+		return "", err
+	}
+	
+	// Parse storage position (32 bytes)
+	position := [32]byte{}
+	positionHex := strings.TrimPrefix(positionStr, "0x")
+	if len(positionHex) > 64 {
+		return "", fmt.Errorf("invalid position: too long")
+	}
+	// Pad to 64 hex chars (32 bytes)
+	positionHex = strings.Repeat("0", 64-len(positionHex)) + positionHex
+	posBytes, err := hex.DecodeString(positionHex)
+	if err != nil {
+		return "", fmt.Errorf("invalid position hex")
+	}
+	copy(position[:], posBytes)
+	
+	// Get storage from StateDB
+	value := h.stateDB.GetState(addr, position)
+	
+	return fmt.Sprintf("0x%x", value), nil
+}
+
+// getBlockReceipts_handler returns all receipts for a block
+func (h *ETHHandler) getBlockReceipts_handler(params json.RawMessage) ([]interface{}, error) {
+	var p []interface{}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, err
+	}
+	if len(p) < 1 {
+		return nil, fmt.Errorf("missing block parameter")
+	}
+	
+	// TODO: Implement receipt lookup for all transactions in block
+	// For now, return empty array (no receipts)
+	return []interface{}{}, nil
+}
+
+// getTransactionByBlockNumberAndIndex_handler returns transaction by block number and index
+func (h *ETHHandler) getTransactionByBlockNumberAndIndex_handler(params json.RawMessage) (interface{}, error) {
+	var p []interface{}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, err
+	}
+	if len(p) < 2 {
+		return nil, fmt.Errorf("missing block number or index parameter")
+	}
+	
+	// TODO: Implement transaction lookup by block number and index
+	// For now, return null (transaction not found)
+	return nil, nil
+}
+
+// getTransactionByBlockHashAndIndex_handler returns transaction by block hash and index
+func (h *ETHHandler) getTransactionByBlockHashAndIndex_handler(params json.RawMessage) (interface{}, error) {
+	var p []interface{}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, err
+	}
+	if len(p) < 2 {
+		return nil, fmt.Errorf("missing block hash or index parameter")
+	}
+	
+	// TODO: Implement transaction lookup by block hash and index
+	// For now, return null (transaction not found)
+	return nil, nil
 }
 

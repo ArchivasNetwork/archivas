@@ -128,6 +128,9 @@ func NewFarmingServer(ws *ledger.WorldState, mp *mempool.Mempool, ns NodeState) 
 			// TODO: Implement EVM transaction submission
 			return fmt.Errorf("EVM transaction submission not yet implemented")
 		},
+		func() int {
+			return ns.GetPeerCount()
+		},
 	)
 	
 	return &FarmingServer{
@@ -463,15 +466,25 @@ func (s *FarmingServer) handleRoot(w http.ResponseWriter, r *http.Request) {
 			ID      interface{}     `json:"id"`
 		}
 		
-		if err := json.NewDecoder(r.Body).Decode(&req); err == nil && req.JSONRPC == "2.0" {
-			// Handle ETH JSON-RPC methods
-			s.handleJSONRPC(w, req.Method, req.Params, req.ID)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			// Invalid JSON or parse error - return JSON-RPC parse error
+			writeJSONRPCError(w, nil, -32700, "Parse error")
 			return
 		}
+		
+		// All POST requests to root must be JSON-RPC 2.0
+		if req.JSONRPC != "2.0" {
+			writeJSONRPCError(w, req.ID, -32600, "Invalid Request: jsonrpc field must be '2.0'")
+			return
+		}
+		
+		// Handle ETH JSON-RPC methods
+		s.handleJSONRPC(w, req.Method, req.Params, req.ID)
+		return
 	}
 
-	// Legacy response for non-JSON-RPC requests
-	fmt.Fprintf(w, `{"status":"ok","message":"Archivas Devnet RPC Server (Farming Enabled)"}`)
+	// GET requests return server info (non-JSON-RPC)
+	fmt.Fprintf(w, `{"status":"ok","message":"Archivas Betanet RPC Server","network":"betanet","chainId":1644}`)
 }
 
 // handleJSONRPC routes JSON-RPC 2.0 requests to appropriate handlers
@@ -515,6 +528,22 @@ func (s *FarmingServer) handleJSONRPC(w http.ResponseWriter, method string, para
 		result, err = s.ethHandler.sendRawTransaction_handler(params)
 	case "net_version":
 		result, err = s.ethHandler.netVersion_handler()
+	case "web3_clientVersion":
+		result, err = s.ethHandler.web3ClientVersion_handler()
+	case "net_peerCount":
+		result, err = s.ethHandler.netPeerCount_handler()
+	case "eth_getLogs":
+		result, err = s.ethHandler.getLogs_handler(params)
+	case "eth_getTransactionByHash":
+		result, err = s.ethHandler.getTransactionByHash_handler(params)
+	case "eth_getStorageAt":
+		result, err = s.ethHandler.getStorageAt_handler(params)
+	case "eth_getBlockReceipts":
+		result, err = s.ethHandler.getBlockReceipts_handler(params)
+	case "eth_getTransactionByBlockNumberAndIndex":
+		result, err = s.ethHandler.getTransactionByBlockNumberAndIndex_handler(params)
+	case "eth_getTransactionByBlockHashAndIndex":
+		result, err = s.ethHandler.getTransactionByBlockHashAndIndex_handler(params)
 	default:
 		writeJSONRPCError(w, id, -32601, "Method not found")
 		return
