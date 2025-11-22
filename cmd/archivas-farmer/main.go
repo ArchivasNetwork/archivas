@@ -86,7 +86,8 @@ func cmdPlot() {
 		}
 		farmerPubKey = pubKey
 
-		addr, _ := wallet.PubKeyToAddress(pubKey)
+		// Use canonical Ethereum-compatible address derivation
+		addr, _ := address.PrivateKeyToARCVAddress(privKey, "arcv")
 		fmt.Printf("Generated new farmer identity:\n")
 		fmt.Printf("  Address:     %s\n", addr)
 		fmt.Printf("  Public Key:  %s (use for --farmer-pubkey)\n", hex.EncodeToString(pubKey))

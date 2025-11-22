@@ -1,41 +1,50 @@
 package ledger
 
 import (
-	"crypto/sha256"
+	"crypto/ecdsa"
 	"fmt"
 
-	"github.com/btcsuite/btcd/btcutil/bech32"
+	"github.com/ArchivasNetwork/archivas/address"
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
-	"github.com/decred/dcrd/dcrec/secp256k1/v4/ecdsa"
+	decredEcdsa "github.com/decred/dcrd/dcrec/secp256k1/v4/ecdsa"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
-// pubKeyToAddress converts a public key to a bech32 address (same logic as wallet package)
-func pubKeyToAddress(pubKey []byte) (string, error) {
-	// Hash the public key using SHA256
-	hash := sha256.Sum256(pubKey)
-
-	// Take first 20 bytes
-	addrBytes := hash[:20]
-
-	// Convert to bech32 with "arcv" prefix
-	conv, err := bech32.ConvertBits(addrBytes, 8, 5, true)
+// pubKeyToARCVAddress converts a compressed or uncompressed public key to an ARCV bech32 address
+// using the CANONICAL Ethereum-compatible derivation (Keccak256-based).
+//
+// This replaces the old SHA256-based derivation to ensure consistency across all components.
+func pubKeyToARCVAddress(pubKeyBytes []byte) (string, error) {
+	// Parse the public key (handles both compressed and uncompressed formats)
+	pubKey, err := secp256k1.ParsePubKey(pubKeyBytes)
 	if err != nil {
-		return "", fmt.Errorf("failed to convert bits: %w", err)
+		return "", fmt.Errorf("failed to parse public key: %w", err)
 	}
 
-	// Encode as bech32
-	encoded, err := bech32.Encode("arcv", conv)
-	if err != nil {
-		return "", fmt.Errorf("failed to encode bech32: %w", err)
+	// Convert decred public key to Go's standard ecdsa.PublicKey
+	ecdsaPubKey := ecdsa.PublicKey{
+		Curve: crypto.S256(),
+		X:     pubKey.X(),
+		Y:     pubKey.Y(),
 	}
 
-	return encoded, nil
+	// Derive EVM address using canonical Ethereum method (Keccak256)
+	evmAddr := address.PublicKeyToEVMAddress(&ecdsaPubKey)
+
+	// Encode as ARCV Bech32
+	arcvAddr, err := address.EncodeARCVAddress(evmAddr, "arcv")
+	if err != nil {
+		return "", fmt.Errorf("failed to encode ARCV address: %w", err)
+	}
+
+	return arcvAddr, nil
 }
 
 // VerifyTransactionSignature verifies that a transaction signature is valid
+// using the CANONICAL Ethereum-compatible address derivation.
 func VerifyTransactionSignature(tx Transaction) error {
-	// Verify that SenderPubKey matches From address
-	addr, err := pubKeyToAddress(tx.SenderPubKey)
+	// Verify that SenderPubKey matches From address using canonical derivation
+	addr, err := pubKeyToARCVAddress(tx.SenderPubKey)
 	if err != nil {
 		return fmt.Errorf("failed to derive address from public key: %w", err)
 	}
@@ -51,7 +60,7 @@ func VerifyTransactionSignature(tx Transaction) error {
 	}
 
 	// Parse signature
-	sig, err := ecdsa.ParseDERSignature(tx.Signature)
+	sig, err := decredEcdsa.ParseDERSignature(tx.Signature)
 	if err != nil {
 		return fmt.Errorf("failed to parse signature: %w", err)
 	}

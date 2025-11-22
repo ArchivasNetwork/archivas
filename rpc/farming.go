@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ArchivasNetwork/archivas/address"
 	"github.com/ArchivasNetwork/archivas/config"
 	"github.com/ArchivasNetwork/archivas/evm"
 	"github.com/ArchivasNetwork/archivas/internal/buildinfo"
@@ -146,18 +147,17 @@ func (s *FarmingServer) EnableFaucet(privKeyHex string) error {
 		return fmt.Errorf("invalid private key: must be 32 bytes hex")
 	}
 
-	priv := secp256k1.PrivKeyFromBytes(privKeyBytes)
-	pubKey := priv.PubKey().SerializeCompressed()
-	address, err := wallet.PubKeyToAddress(pubKey)
+	// Use canonical Ethereum-compatible address derivation
+	arcvAddress, err := address.PrivateKeyToARCVAddress(privKeyBytes, "arcv")
 	if err != nil {
 		return fmt.Errorf("failed to derive address: %w", err)
 	}
 
 	s.faucetKey = privKeyBytes
-	s.faucetAddress = address
+	s.faucetAddress = arcvAddress
 	s.faucetEnabled = true
 
-	log.Printf("[faucet] enabled with address %s", address)
+	log.Printf("[faucet] enabled with address %s", arcvAddress)
 	return nil
 }
 
