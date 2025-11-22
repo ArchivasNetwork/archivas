@@ -159,6 +159,30 @@ func NewFarmingServer(ws *ledger.WorldState, mp *mempool.Mempool, ns NodeState) 
 			// TODO: Calculate fee from gas price and gas limit
 			feeRCHV := int64(100) // 0.00000100 RCHV
 			
+			// Encode signature from V, R, S (Ethereum format)
+			// Signature format: R (32 bytes) + S (32 bytes) + V (1 byte)
+			signature := make([]byte, 65)
+			
+			// R and S are 32 bytes each
+			rBytes := tx.R.Bytes()
+			sBytes := tx.S.Bytes()
+			vBytes := tx.V.Bytes()
+			
+			// Pad R and S to 32 bytes (left-pad with zeros if needed)
+			copy(signature[32-len(rBytes):32], rBytes)
+			copy(signature[64-len(sBytes):64], sBytes)
+			
+			// V is the recovery ID (last byte)
+			if len(vBytes) > 0 {
+				signature[64] = vBytes[len(vBytes)-1]
+			}
+			
+			// For SenderPubKey, we need to recover the public key from the signature
+			// For now, we'll use a placeholder since the transaction verification
+			// will derive it from the signature
+			// TODO: Properly recover public key using secp256k1
+			senderPubKey := []byte{} // Will be recovered during verification
+			
 			// Create ledger transaction
 			ledgerTx := ledger.Transaction{
 				From:         fromAddr,
@@ -166,12 +190,14 @@ func NewFarmingServer(ws *ledger.WorldState, mp *mempool.Mempool, ns NodeState) 
 				Amount:       valueRCHV.Int64(),
 				Fee:          feeRCHV,
 				Nonce:        tx.Nonce(),
-				SenderPubKey: []byte{}, // Will be derived from signature
-				Signature:    []byte{}, // Will be encoded from V, R, S
+				SenderPubKey: senderPubKey,
+				Signature:    signature,
 			}
 			
-			// TODO: Properly encode signature from V, R, S
-			// For now, add to mempool
+			log.Printf("[submitTx] Encoded signature: R=%d bytes, S=%d bytes, V=%d",
+				len(rBytes), len(sBytes), signature[64])
+			
+			// Add to mempool
 			mp.Add(ledgerTx)
 			
 			log.Printf("[submitTx] Transaction added to mempool: from=%s, to=%s, amount=%d, nonce=%d",
