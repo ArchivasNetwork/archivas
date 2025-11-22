@@ -448,14 +448,6 @@ func (s *FarmingServer) handleSubmitTx(w http.ResponseWriter, r *http.Request) {
 	originalServer.handleSubmitTx(w, r)
 }
 
-// JSONRPCRequest represents a single JSON-RPC 2.0 request
-type JSONRPCRequest struct {
-	JSONRPC string          `json:"jsonrpc"`
-	Method  string          `json:"method"`
-	Params  json.RawMessage `json:"params"`
-	ID      interface{}     `json:"id"`
-}
-
 // handleRoot handles GET / (status endpoint) and POST / (JSON-RPC)
 func (s *FarmingServer) handleRoot(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
