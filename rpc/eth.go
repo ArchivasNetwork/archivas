@@ -729,9 +729,10 @@ func convertLegacyBlockToEthBlock(legacyBlock map[string]interface{}, fullTx boo
 	}
 	
 	farmerAddr, _ := legacyBlock["farmerAddr"].(string)
-	if farmerAddr == "" {
-		farmerAddr = "0x0000000000000000000000000000000000000000" // Genesis has no farmer
-	}
+	
+	// Convert farmer address to valid EVM miner address
+	// This handles ARCV Bech32 addresses, empty strings, and validates format
+	minerAddr := ensureValidMinerAddress(farmerAddr)
 
 	// For Ethereum compatibility
 	ethBlock := map[string]interface{}{
@@ -744,7 +745,7 @@ func convertLegacyBlockToEthBlock(legacyBlock map[string]interface{}, fullTx boo
 		"transactionsRoot": "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
 		"stateRoot":       "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
 		"receiptsRoot":    "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
-		"miner":           farmerAddr, // Farmer acts as miner
+		"miner":           minerAddr, // Farmer acts as miner (validated EVM address)
 		"difficulty":      fmt.Sprintf("0x%x", difficultyVal),
 		"totalDifficulty": fmt.Sprintf("0x%x", difficultyVal), // Simplified
 		"extraData":       "0x",
@@ -803,7 +804,7 @@ func convertTypesBlockToEthBlock(block *types.Block, fullTx bool) map[string]int
 		"transactionsRoot": "0x" + hex.EncodeToString(txRoot[:]),
 		"stateRoot":        "0x" + hex.EncodeToString(block.StateRoot[:]),
 		"receiptsRoot":     "0x" + hex.EncodeToString(block.ReceiptsRoot[:]),
-		"miner":            block.FarmerAddr.Hex(),
+		"miner":            ensureValidMinerAddress(block.FarmerAddr.Hex()),
 		"difficulty":       fmt.Sprintf("0x%x", block.Difficulty),
 		"totalDifficulty":  fmt.Sprintf("0x%x", block.CumulativeWork),
 		"extraData":        "0x",
@@ -824,6 +825,48 @@ func ensureHexPrefix(s string) string {
 		return s
 	}
 	return "0x" + s
+}
+
+// ensureValidMinerAddress converts any address format to a valid EVM miner address
+// Returns zero address if conversion fails or input is invalid
+func ensureValidMinerAddress(addr string) string {
+	// Zero address constant
+	zeroAddress := "0x0000000000000000000000000000000000000000"
+	
+	// Empty or zero address
+	if addr == "" {
+		return zeroAddress
+	}
+	
+	// If it starts with "arcv" or "arcv1", it's a Bech32 address - convert it
+	if strings.HasPrefix(addr, "arcv") {
+		evmAddr, err := address.ParseAnyAddress(addr)
+		if err != nil {
+			// Failed to parse ARCV address, return zero
+			return zeroAddress
+		}
+		addr = evmAddr.Hex()
+	}
+	
+	// Ensure it has 0x prefix
+	if !strings.HasPrefix(addr, "0x") {
+		addr = "0x" + addr
+	}
+	
+	// Validate length: must be exactly 42 chars (0x + 40 hex digits)
+	if len(addr) != 42 {
+		return zeroAddress
+	}
+	
+	// Validate hex characters
+	for i := 2; i < len(addr); i++ {
+		c := addr[i]
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return zeroAddress
+		}
+	}
+	
+	return strings.ToLower(addr)
 }
 
 // ==================== Blockscout-Required Methods ====================
