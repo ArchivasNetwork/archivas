@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/big"
 	"net"
 	"net/http"
 	"strconv"
@@ -125,8 +126,58 @@ func NewFarmingServer(ws *ledger.WorldState, mp *mempool.Mempool, ns NodeState) 
 			return nil, fmt.Errorf("receipt not found")
 		},
 		func(tx *types.EVMTransaction) error {
-			// TODO: Implement EVM transaction submission
-			return fmt.Errorf("EVM transaction submission not yet implemented")
+			// Submit EVM transaction to mempool
+			log.Printf("[submitTx] Submitting EVM transaction from %s, nonce=%d, value=%s",
+				tx.From().Hex(), tx.Nonce(), tx.Value())
+			
+			// Convert EVMTransaction to ledger.Transaction
+			fromAddr, err := address.EncodeARCVAddress(tx.From(), "arcv")
+			if err != nil {
+				return fmt.Errorf("failed to encode from address: %v", err)
+			}
+			
+			var toAddr string
+			if tx.To() != nil {
+				toAddr, err = address.EncodeARCVAddress(*tx.To(), "arcv")
+				if err != nil {
+					return fmt.Errorf("failed to encode to address: %v", err)
+				}
+			}
+			
+			// Convert value from Wei (18 decimals) to RCHV base units (8 decimals)
+			// Wei = RCHV * 10^10
+			valueWei := tx.Value()
+			if valueWei == nil {
+				valueWei = big.NewInt(0)
+			}
+			
+			// Divide by 10^10 to convert from Wei to RCHV base units
+			divisor := big.NewInt(10_000_000_000)
+			valueRCHV := new(big.Int).Div(valueWei, divisor)
+			
+			// For now, use a simple fixed fee
+			// TODO: Calculate fee from gas price and gas limit
+			feeRCHV := int64(100) // 0.00000100 RCHV
+			
+			// Create ledger transaction
+			ledgerTx := ledger.Transaction{
+				From:         fromAddr,
+				To:           toAddr,
+				Amount:       valueRCHV.Int64(),
+				Fee:          feeRCHV,
+				Nonce:        tx.Nonce(),
+				SenderPubKey: []byte{}, // Will be derived from signature
+				Signature:    []byte{}, // Will be encoded from V, R, S
+			}
+			
+			// TODO: Properly encode signature from V, R, S
+			// For now, add to mempool
+			mp.Add(ledgerTx)
+			
+			log.Printf("[submitTx] Transaction added to mempool: from=%s, to=%s, amount=%d, nonce=%d",
+				fromAddr, toAddr, ledgerTx.Amount, ledgerTx.Nonce)
+			
+			return nil
 		},
 		func() int {
 			return ns.GetPeerCount()
