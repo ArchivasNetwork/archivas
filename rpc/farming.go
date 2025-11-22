@@ -40,6 +40,7 @@ type NodeState interface {
 	GetHealthStats() interface{}
 	GetRecentBlocks(count int) interface{}
 	GetBlockByHeight(height uint64) (interface{}, error)
+	GetBlockByHash(hash [32]byte) (interface{}, error)
 }
 
 // FarmingServer extends Server with farming capabilities
@@ -110,6 +111,18 @@ func NewFarmingServer(ws *ledger.WorldState, mp *mempool.Mempool, ns NodeState) 
 		},
 		func(height uint64) (*types.Block, error) {
 			blockRaw, err := ns.GetBlockByHeight(height)
+			if err != nil {
+				return nil, err
+			}
+			// Type assertion to *types.Block
+			block, ok := blockRaw.(*types.Block)
+			if !ok {
+				return nil, fmt.Errorf("invalid block type")
+			}
+			return block, nil
+		},
+		func(hash [32]byte) (*types.Block, error) {
+			blockRaw, err := ns.GetBlockByHash(hash)
 			if err != nil {
 				return nil, err
 			}

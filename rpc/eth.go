@@ -16,12 +16,13 @@ import (
 // ETHHandler provides Ethereum JSON-RPC compatibility
 // Phase 3: Minimal eth_* endpoint implementation
 type ETHHandler struct {
-	chainID   uint64
-	stateDB   evm.StateDB
-	getHeight func() uint64
-	getBlock  func(height uint64) (*types.Block, error)
-	getReceipt func(txHash [32]byte) (*types.Receipt, error)
-	submitTx  func(tx *types.EVMTransaction) error
+	chainID      uint64
+	stateDB      evm.StateDB
+	getHeight    func() uint64
+	getBlock     func(height uint64) (*types.Block, error)
+	getBlockByHash func(hash [32]byte) (*types.Block, error)
+	getReceipt   func(txHash [32]byte) (*types.Receipt, error)
+	submitTx     func(tx *types.EVMTransaction) error
 }
 
 // NewETHHandler creates a new ETH RPC handler
@@ -30,16 +31,18 @@ func NewETHHandler(
 	stateDB evm.StateDB,
 	getHeight func() uint64,
 	getBlock func(height uint64) (*types.Block, error),
+	getBlockByHash func(hash [32]byte) (*types.Block, error),
 	getReceipt func(txHash [32]byte) (*types.Receipt, error),
 	submitTx func(tx *types.EVMTransaction) error,
 ) *ETHHandler {
 	return &ETHHandler{
-		chainID:    chainID,
-		stateDB:    stateDB,
-		getHeight:  getHeight,
-		getBlock:   getBlock,
-		getReceipt: getReceipt,
-		submitTx:   submitTx,
+		chainID:        chainID,
+		stateDB:        stateDB,
+		getHeight:      getHeight,
+		getBlock:       getBlock,
+		getBlockByHash: getBlockByHash,
+		getReceipt:     getReceipt,
+		submitTx:       submitTx,
 	}
 }
 
@@ -103,6 +106,12 @@ func (h *ETHHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		result, err = h.gasPrice_handler()
 	case "eth_getBlockByNumber":
 		result, err = h.getBlockByNumber_handler(req.Params)
+	case "eth_getBlockByHash":
+		result, err = h.getBlockByHash_handler(req.Params)
+	case "eth_estimateGas":
+		result, err = h.estimateGas_handler(req.Params)
+	case "eth_feeHistory":
+		result, err = h.feeHistory_handler(req.Params)
 	case "eth_syncing":
 		result, err = h.syncing_handler()
 	case "net_version":
@@ -354,6 +363,234 @@ func (h *ETHHandler) syncing_handler() (interface{}, error) {
 	// For now, always return false (not syncing)
 	// In a full implementation, this would check if the node is in IBD mode
 	return false, nil
+}
+
+// eth_getBlockByHash returns block information by hash
+func (h *ETHHandler) getBlockByHash_handler(params json.RawMessage) (interface{}, error) {
+	var p []interface{}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, err
+	}
+	if len(p) < 1 {
+		return nil, fmt.Errorf("missing block hash parameter")
+	}
+
+	blockHashStr, ok := p[0].(string)
+	if !ok {
+		return nil, fmt.Errorf("invalid block hash parameter")
+	}
+
+	blockHash, err := parseHash(blockHashStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid block hash: %v", err)
+	}
+
+	// Get block from node by hash
+	block, err := h.getBlockByHash(blockHash)
+	if err != nil {
+		return nil, nil // Return null for not found
+	}
+
+	// Include full transaction objects or just hashes?
+	fullTx := false
+	if len(p) > 1 {
+		if fullTxBool, ok := p[1].(bool); ok {
+			fullTx = fullTxBool
+		}
+	}
+
+	// Format block response (similar to getBlockByNumber)
+	response := map[string]interface{}{
+		"number":     fmt.Sprintf("0x%x", block.Height),
+		"hash":       fmt.Sprintf("0x%x", block.Hash()),
+		"parentHash": fmt.Sprintf("0x%x", block.PrevHash),
+		"timestamp":  fmt.Sprintf("0x%x", block.TimestampUnix),
+		"difficulty": fmt.Sprintf("0x%x", block.Difficulty),
+		"gasLimit":   fmt.Sprintf("0x%x", block.GasLimit),
+		"gasUsed":    fmt.Sprintf("0x%x", block.GasUsed),
+		"miner":      block.FarmerAddr.Hex(), // PoST farmer address
+		"stateRoot":  fmt.Sprintf("0x%x", block.StateRoot),
+		"receiptsRoot": fmt.Sprintf("0x%x", block.ReceiptsRoot),
+		"transactions": []interface{}{}, // Simplified
+	}
+
+	if !fullTx {
+		// Return array of transaction hashes
+		response["transactions"] = []interface{}{}
+	}
+
+	return response, nil
+}
+
+// eth_estimateGas estimates gas for a transaction
+func (h *ETHHandler) estimateGas_handler(params json.RawMessage) (string, error) {
+	var p []interface{}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return "", err
+	}
+	if len(p) < 1 {
+		return "", fmt.Errorf("missing transaction object parameter")
+	}
+
+	callObj, ok := p[0].(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("invalid transaction object parameter")
+	}
+
+	// Extract transaction parameters
+	// For now, implement a simplified estimation:
+	// - Simple transfers: 21000 gas
+	// - Contract calls/deployments: estimate based on data size
+
+	// Check if there's contract data
+	dataStr, hasData := callObj["data"].(string)
+	valueStr, _ := callObj["value"].(string)
+
+	baseGas := uint64(21000) // Base cost for a simple transfer
+
+	if hasData && dataStr != "" && dataStr != "0x" {
+		// Contract call or deployment
+		data := strings.TrimPrefix(dataStr, "0x")
+		dataBytes, err := hex.DecodeString(data)
+		if err != nil {
+			return "", fmt.Errorf("invalid data hex: %v", err)
+		}
+
+		// Estimate gas based on data size
+		// Each byte of data costs:
+		// - 4 gas for zero bytes
+		// - 16 gas for non-zero bytes
+		// Plus overhead for contract execution
+		gasForData := uint64(0)
+		for _, b := range dataBytes {
+			if b == 0 {
+				gasForData += 4
+			} else {
+				gasForData += 16
+			}
+		}
+
+		// Check if this is a contract deployment (no "to" field)
+		_, hasTo := callObj["to"]
+		if !hasTo {
+			// Contract deployment: base + data + overhead
+			baseGas = 53000 // Deployment base cost
+		} else {
+			// Contract call: base + data + execution overhead
+			baseGas = 21000
+		}
+
+		estimatedGas := baseGas + gasForData + 20000 // Add execution overhead
+		return fmt.Sprintf("0x%x", estimatedGas), nil
+	}
+
+	// Simple value transfer
+	if valueStr != "" && valueStr != "0x" && valueStr != "0x0" {
+		return fmt.Sprintf("0x%x", baseGas), nil
+	}
+
+	// Default: return 21000 for simple transfer
+	return fmt.Sprintf("0x%x", baseGas), nil
+}
+
+// eth_feeHistory returns fee history for recent blocks
+func (h *ETHHandler) feeHistory_handler(params json.RawMessage) (map[string]interface{}, error) {
+	var p []interface{}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, err
+	}
+	if len(p) < 2 {
+		return nil, fmt.Errorf("missing parameters (blockCount and newestBlock required)")
+	}
+
+	// Parse blockCount (can be number or hex string)
+	var blockCount uint64
+	switch v := p[0].(type) {
+	case float64:
+		blockCount = uint64(v)
+	case string:
+		blockCountStr := strings.TrimPrefix(v, "0x")
+		parsed, err := strconv.ParseUint(blockCountStr, 16, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid blockCount: %v", err)
+		}
+		blockCount = parsed
+	default:
+		return nil, fmt.Errorf("invalid blockCount type")
+	}
+
+	// Parse newestBlock (can be number, hex string, or "latest")
+	var newestBlock uint64
+	switch v := p[1].(type) {
+	case float64:
+		newestBlock = uint64(v)
+	case string:
+		if v == "latest" || v == "pending" {
+			newestBlock = h.getHeight()
+		} else if v == "earliest" {
+			newestBlock = 0
+		} else {
+			newestBlockStr := strings.TrimPrefix(v, "0x")
+			parsed, err := strconv.ParseUint(newestBlockStr, 16, 64)
+			if err != nil {
+				return nil, fmt.Errorf("invalid newestBlock: %v", err)
+			}
+			newestBlock = parsed
+		}
+	default:
+		return nil, fmt.Errorf("invalid newestBlock type")
+	}
+
+	// Parse rewardPercentiles (optional)
+	// For now, we'll return empty rewards since we don't have historical gas price data
+
+	// Simplified implementation:
+	// Archivas uses fixed gas price (no EIP-1559 base fee yet)
+	// Return constant gas price for all blocks in range
+
+	oldestBlock := newestBlock
+	if blockCount > newestBlock {
+		oldestBlock = 0
+	} else {
+		oldestBlock = newestBlock - blockCount + 1
+	}
+
+	// Build baseFeePerGas array (one entry per block + 1 for next block)
+	baseFeePerGas := make([]string, blockCount+1)
+	gasUsedRatio := make([]float64, blockCount)
+
+	// Fixed gas price: 1 gwei
+	fixedGasPrice := "0x3b9aca00" // 1000000000 wei = 1 gwei
+
+	for i := range baseFeePerGas {
+		baseFeePerGas[i] = fixedGasPrice
+	}
+
+	// Calculate gas used ratio for each block
+	for i := uint64(0); i < blockCount; i++ {
+		blockNum := oldestBlock + i
+		block, err := h.getBlock(blockNum)
+		if err != nil {
+			// If block not found, use 0 ratio
+			gasUsedRatio[i] = 0.0
+			continue
+		}
+
+		if block.GasLimit == 0 {
+			gasUsedRatio[i] = 0.0
+		} else {
+			gasUsedRatio[i] = float64(block.GasUsed) / float64(block.GasLimit)
+		}
+	}
+
+	response := map[string]interface{}{
+		"oldestBlock":   fmt.Sprintf("0x%x", oldestBlock),
+		"baseFeePerGas": baseFeePerGas,
+		"gasUsedRatio":  gasUsedRatio,
+		"reward":        [][]string{}, // Empty for now (no priority fees)
+	}
+
+	return response, nil
 }
 
 // Helper functions

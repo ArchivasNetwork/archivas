@@ -1,0 +1,129 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:14
+    restart: always
+    container_name: 'blockscout-postgres'
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_USER: ${POSTGRES_USER:-blockscout}
+      POSTGRES_DB: blockscout
+    volumes:
+      - blockscout-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U blockscout"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    container_name: 'blockscout-redis'
+    volumes:
+      - blockscout-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  blockscout:
+    image: blockscout/blockscout:${BLOCKSCOUT_VERSION:-latest}
+    restart: always
+    container_name: 'blockscout'
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # Database
+      DATABASE_URL: postgresql://${POSTGRES_USER:-blockscout}:${POSTGRES_PASSWORD:-changeme}@db:5432/blockscout
+      
+      # Network Configuration
+      ETHEREUM_JSONRPC_VARIANT: 'geth'
+      ETHEREUM_JSONRPC_HTTP_URL: ${RPC_HTTP_URL:-https://seed3.betanet.archivas.ai}
+      ETHEREUM_JSONRPC_WS_URL: ${RPC_WS_URL:-}
+      ETHEREUM_JSONRPC_TRACE_URL: ${RPC_TRACE_URL:-}
+      
+      # Chain Configuration
+      CHAIN_ID: '1644'
+      NETWORK: 'Archivas Betanet'
+      SUBNETWORK: 'Testnet'
+      LOGO: '/images/archivas-logo.svg'
+      COIN: 'RCHV'
+      COIN_NAME: 'Archivas'
+      
+      # Block Explorer Settings
+      BLOCKSCOUT_HOST: ${BLOCKSCOUT_HOST:-explorer.betanet.archivas.ai}
+      BLOCKSCOUT_PROTOCOL: ${BLOCKSCOUT_PROTOCOL:-https}
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:-CHANGEME_SECRET_KEY}
+      
+      # Redis
+      REDIS_URL: redis://redis:6379
+      
+      # Indexer Configuration
+      INDEXER_DISABLE_PENDING_TRANSACTIONS_FETCHER: 'false'
+      INDEXER_DISABLE_INTERNAL_TRANSACTIONS_FETCHER: 'true'
+      BLOCK_TRANSFORMER: 'base'
+      
+      # API Configuration
+      API_V2_ENABLED: 'true'
+      ENABLE_RUST_VERIFICATION_SERVICE: 'false'
+      
+      # Smart Contract Verification
+      ENABLE_SOURCIFY_INTEGRATION: 'true'
+      SOURCIFY_SERVER_URL: 'https://sourcify.dev/server'
+      SOURCIFY_REPO_URL: 'https://repo.sourcify.dev/contracts'
+      
+      # UI Configuration
+      SUPPORTED_CHAINS: '[{"title":"Archivas Betanet","url":"${BLOCKSCOUT_PROTOCOL:-https}://${BLOCKSCOUT_HOST:-explorer.betanet.archivas.ai}"}]'
+      FOOTER_LOGO: '/images/archivas-logo.svg'
+      FOOTER_LINK_TO_OTHER_EXPLORERS: 'false'
+      
+      # Rate Limiting
+      API_RATE_LIMIT_DISABLED: 'false'
+      API_RATE_LIMIT: '50'
+      API_RATE_LIMIT_BY_IP: '50'
+      
+      # Additional Features
+      DISABLE_WEBAPP: 'false'
+      DISABLE_READ_API: 'false'
+      DISABLE_WRITE_API: 'false'
+      DISABLE_INDEXER: 'false'
+      
+      # Monitoring
+      HEART_BEAT_TIMEOUT: '30'
+      HEART_COMMAND: ''
+      
+      # EVM Compatibility
+      EVM_VERSION: 'london'
+      HISTORY_FETCH_MAX_BLOCK_RANGE: '10000'
+      
+    ports:
+      - "4000:4000"
+    volumes:
+      - blockscout-data:/app/logs
+    command: >
+      sh -c "
+        bin/blockscout eval 'Elixir.Explorer.ReleaseTasks.create_and_migrate()'
+        && bin/blockscout start
+      "
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/api/v1/health/liveness"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+volumes:
+  blockscout-db-data:
+  blockscout-redis-data:
+  blockscout-data:
+
+networks:
+  default:
+    name: blockscout-network
+
