@@ -448,7 +448,15 @@ func (s *FarmingServer) handleSubmitTx(w http.ResponseWriter, r *http.Request) {
 	originalServer.handleSubmitTx(w, r)
 }
 
-// handleRoot handles GET / (status endpoint)
+// JSONRPCRequest represents a single JSON-RPC 2.0 request
+type JSONRPCRequest struct {
+	JSONRPC string          `json:"jsonrpc"`
+	Method  string          `json:"method"`
+	Params  json.RawMessage `json:"params"`
+	ID      interface{}     `json:"id"`
+}
+
+// handleRoot handles GET / (status endpoint) and POST / (JSON-RPC)
 func (s *FarmingServer) handleRoot(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
@@ -459,102 +467,202 @@ func (s *FarmingServer) handleRoot(w http.ResponseWriter, r *http.Request) {
 
 	// Handle JSON-RPC requests for ETH compatibility
 	if r.Method == http.MethodPost {
-		var req struct {
-			JSONRPC string          `json:"jsonrpc"`
-			Method  string          `json:"method"`
-			Params  json.RawMessage `json:"params"`
-			ID      interface{}     `json:"id"`
-		}
-		
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			// Invalid JSON or parse error - return JSON-RPC parse error
+		// Read body once
+		var rawBody json.RawMessage
+		if err := json.NewDecoder(r.Body).Decode(&rawBody); err != nil {
+			// True parse error - invalid JSON
 			writeJSONRPCError(w, nil, -32700, "Parse error")
 			return
 		}
 		
-		// All POST requests to root must be JSON-RPC 2.0
-		if req.JSONRPC != "2.0" {
-			writeJSONRPCError(w, req.ID, -32600, "Invalid Request: jsonrpc field must be '2.0'")
-			return
+		// Try to detect if it's a batch request (array) or single request (object)
+		// Peek at first non-whitespace character
+		trimmed := string(rawBody)
+		firstChar := ""
+		for _, ch := range trimmed {
+			if ch != ' ' && ch != '\t' && ch != '\n' && ch != '\r' {
+				firstChar = string(ch)
+				break
+			}
 		}
 		
-		// Handle ETH JSON-RPC methods
-		s.handleJSONRPC(w, req.Method, req.Params, req.ID)
-		return
+		if firstChar == "[" {
+			// Batch request
+			var batch []JSONRPCRequest
+			if err := json.Unmarshal(rawBody, &batch); err != nil {
+				// Valid JSON array but invalid JSON-RPC structure
+				writeJSONRPCError(w, nil, -32600, "Invalid Request")
+				return
+			}
+			
+			if len(batch) == 0 {
+				// Empty batch is invalid
+				writeJSONRPCError(w, nil, -32600, "Invalid Request: empty batch")
+				return
+			}
+			
+			// Process batch
+			responses := make([]interface{}, 0, len(batch))
+			for _, req := range batch {
+				resp := s.processSingleRequest(req)
+				// Only include non-notification responses (notifications have null id and no response)
+				if req.ID != nil {
+					responses = append(responses, resp)
+				}
+			}
+			
+			// Return batch response
+			json.NewEncoder(w).Encode(responses)
+			return
+		} else if firstChar == "{" {
+			// Single request
+			var req JSONRPCRequest
+			if err := json.Unmarshal(rawBody, &req); err != nil {
+				// Valid JSON object but invalid JSON-RPC structure
+				writeJSONRPCError(w, nil, -32600, "Invalid Request")
+				return
+			}
+			
+			// Validate JSON-RPC 2.0
+			if req.JSONRPC != "2.0" {
+				writeJSONRPCError(w, req.ID, -32600, "Invalid Request: jsonrpc field must be '2.0'")
+				return
+			}
+			
+			// Process and write response
+			resp := s.processSingleRequest(req)
+			json.NewEncoder(w).Encode(resp)
+			return
+		} else {
+			// Neither array nor object
+			writeJSONRPCError(w, nil, -32700, "Parse error")
+			return
+		}
 	}
 
 	// GET requests return server info (non-JSON-RPC)
 	fmt.Fprintf(w, `{"status":"ok","message":"Archivas Betanet RPC Server","network":"betanet","chainId":1644}`)
 }
 
-// handleJSONRPC routes JSON-RPC 2.0 requests to appropriate handlers
-func (s *FarmingServer) handleJSONRPC(w http.ResponseWriter, method string, params json.RawMessage, id interface{}) {
-	// Delegate all ETH JSON-RPC methods to the ETHHandler
-	// This includes: eth_chainId, eth_blockNumber, eth_getBalance, eth_getCode, 
-	// eth_getTransactionReceipt, eth_getTransactionCount, eth_gasPrice, 
-	// eth_call, eth_sendRawTransaction, net_version
+// processSingleRequest processes a single JSON-RPC request and returns a response object
+func (s *FarmingServer) processSingleRequest(req JSONRPCRequest) map[string]interface{} {
+	// Validate JSON-RPC 2.0
+	if req.JSONRPC != "2.0" {
+		return map[string]interface{}{
+			"jsonrpc": "2.0",
+			"id":      req.ID,
+			"error": map[string]interface{}{
+				"code":    -32600,
+				"message": "Invalid Request: jsonrpc field must be '2.0'",
+			},
+		}
+	}
 	
-	var result interface{}
-	var err error
-
-	switch method {
-	case "eth_chainId":
-		result, err = s.ethHandler.chainID_handler()
-	case "eth_blockNumber":
-		result, err = s.ethHandler.blockNumber_handler()
-	case "eth_getBalance":
-		result, err = s.ethHandler.getBalance_handler(params)
-	case "eth_getCode":
-		result, err = s.ethHandler.getCode_handler(params)
-	case "eth_getTransactionReceipt":
-		result, err = s.ethHandler.getTransactionReceipt_handler(params)
-	case "eth_getTransactionCount":
-		result, err = s.ethHandler.getTransactionCount_handler(params)
-	case "eth_gasPrice":
-		result, err = s.ethHandler.gasPrice_handler()
-	case "eth_getBlockByNumber":
-		result, err = s.ethHandler.getBlockByNumber_handler(params)
-	case "eth_getBlockByHash":
-		result, err = s.ethHandler.getBlockByHash_handler(params)
-	case "eth_estimateGas":
-		result, err = s.ethHandler.estimateGas_handler(params)
-	case "eth_feeHistory":
-		result, err = s.ethHandler.feeHistory_handler(params)
-	case "eth_syncing":
-		result, err = s.ethHandler.syncing_handler()
-	case "eth_call":
-		result, err = s.ethHandler.call_handler(params)
-	case "eth_sendRawTransaction":
-		result, err = s.ethHandler.sendRawTransaction_handler(params)
-	case "net_version":
-		result, err = s.ethHandler.netVersion_handler()
-	case "web3_clientVersion":
-		result, err = s.ethHandler.web3ClientVersion_handler()
-	case "net_peerCount":
-		result, err = s.ethHandler.netPeerCount_handler()
-	case "eth_getLogs":
-		result, err = s.ethHandler.getLogs_handler(params)
-	case "eth_getTransactionByHash":
-		result, err = s.ethHandler.getTransactionByHash_handler(params)
-	case "eth_getStorageAt":
-		result, err = s.ethHandler.getStorageAt_handler(params)
-	case "eth_getBlockReceipts":
-		result, err = s.ethHandler.getBlockReceipts_handler(params)
-	case "eth_getTransactionByBlockNumberAndIndex":
-		result, err = s.ethHandler.getTransactionByBlockNumberAndIndex_handler(params)
-	case "eth_getTransactionByBlockHashAndIndex":
-		result, err = s.ethHandler.getTransactionByBlockHashAndIndex_handler(params)
-	default:
-		writeJSONRPCError(w, id, -32601, "Method not found")
-		return
-	}
-
+	// Route to appropriate handler
+	result, err := s.routeJSONRPCMethod(req.Method, req.Params)
+	
 	if err != nil {
-		writeJSONRPCError(w, id, -32000, err.Error())
-		return
+		// Check if it's a method not found error
+		if err.Error() == "Method not found" {
+			return map[string]interface{}{
+				"jsonrpc": "2.0",
+				"id":      req.ID,
+				"error": map[string]interface{}{
+					"code":    -32601,
+					"message": "Method not found",
+				},
+			}
+		}
+		
+		// Other errors
+		return map[string]interface{}{
+			"jsonrpc": "2.0",
+			"id":      req.ID,
+			"error": map[string]interface{}{
+				"code":    -32000,
+				"message": err.Error(),
+			},
+		}
 	}
+	
+	// Success response
+	return map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      req.ID,
+		"result":  result,
+	}
+}
 
-	writeJSONRPCResponse(w, id, result)
+// routeJSONRPCMethod routes a JSON-RPC method to the appropriate handler
+// Returns (result, error). If method not found, returns error with "Method not found" message.
+func (s *FarmingServer) routeJSONRPCMethod(method string, params json.RawMessage) (interface{}, error) {
+	switch method {
+	// Core ETH methods
+	case "eth_chainId":
+		return s.ethHandler.chainID_handler()
+	case "eth_blockNumber":
+		return s.ethHandler.blockNumber_handler()
+	case "eth_getBalance":
+		return s.ethHandler.getBalance_handler(params)
+	case "eth_getCode":
+		return s.ethHandler.getCode_handler(params)
+	case "eth_getTransactionReceipt":
+		return s.ethHandler.getTransactionReceipt_handler(params)
+	case "eth_getTransactionCount":
+		return s.ethHandler.getTransactionCount_handler(params)
+	case "eth_gasPrice":
+		return s.ethHandler.gasPrice_handler()
+	case "eth_getBlockByNumber":
+		return s.ethHandler.getBlockByNumber_handler(params)
+	case "eth_getBlockByHash":
+		return s.ethHandler.getBlockByHash_handler(params)
+	case "eth_estimateGas":
+		return s.ethHandler.estimateGas_handler(params)
+	case "eth_feeHistory":
+		return s.ethHandler.feeHistory_handler(params)
+	case "eth_syncing":
+		return s.ethHandler.syncing_handler()
+	case "eth_call":
+		return s.ethHandler.call_handler(params)
+	case "eth_sendRawTransaction":
+		return s.ethHandler.sendRawTransaction_handler(params)
+	
+	// Network methods
+	case "net_version":
+		return s.ethHandler.netVersion_handler()
+	case "web3_clientVersion":
+		return s.ethHandler.web3ClientVersion_handler()
+	case "net_peerCount":
+		return s.ethHandler.netPeerCount_handler()
+	
+	// Query methods
+	case "eth_getLogs":
+		return s.ethHandler.getLogs_handler(params)
+	case "eth_getTransactionByHash":
+		return s.ethHandler.getTransactionByHash_handler(params)
+	case "eth_getStorageAt":
+		return s.ethHandler.getStorageAt_handler(params)
+	case "eth_getBlockReceipts":
+		return s.ethHandler.getBlockReceipts_handler(params)
+	case "eth_getTransactionByBlockNumberAndIndex":
+		return s.ethHandler.getTransactionByBlockNumberAndIndex_handler(params)
+	case "eth_getTransactionByBlockHashAndIndex":
+		return s.ethHandler.getTransactionByBlockHashAndIndex_handler(params)
+	
+	// Filter methods (Blockscout noise reduction)
+	case "eth_newFilter", "eth_newBlockFilter", "eth_newPendingTransactionFilter":
+		// Return a fake filter ID
+		return "0x1", nil
+	case "eth_getFilterChanges", "eth_getFilterLogs":
+		// Return empty array (no new logs/changes)
+		return []interface{}{}, nil
+	case "eth_uninstallFilter":
+		// Return true (filter uninstalled)
+		return true, nil
+	
+	default:
+		return nil, fmt.Errorf("Method not found")
+	}
 }
 
 // writeJSONRPCResponse writes a successful JSON-RPC response
