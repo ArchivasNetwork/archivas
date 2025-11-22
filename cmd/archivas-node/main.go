@@ -1469,6 +1469,64 @@ func (ns *NodeState) GetBlockByHeight(height uint64) (interface{}, error) {
 	}, nil
 }
 
+// GetBlockByHash returns a specific block by its hash
+func (ns *NodeState) GetBlockByHash(hash [32]byte) (interface{}, error) {
+	ns.RLock()
+	defer ns.RUnlock()
+
+	// Search through the chain for a block with matching hash
+	for i := range ns.Chain {
+		block := ns.Chain[i]
+		blockHash := hashBlock(&block)
+		if blockHash == hash {
+			// Format transactions with type field
+			formattedTxs := make([]map[string]interface{}, len(block.Txs))
+			for j, tx := range block.Txs {
+				txType := "transfer"
+				if tx.From == "coinbase" {
+					txType = "coinbase"
+				}
+
+				formattedTxs[j] = map[string]interface{}{
+					"type":   txType,
+					"from":   tx.From,
+					"to":     tx.To,
+					"amount": tx.Amount,
+					"fee":    tx.Fee,
+					"nonce":  tx.Nonce,
+				}
+			}
+
+			// Format proof if present
+			var proofData interface{} = nil
+			if block.Proof != nil {
+				proofData = map[string]interface{}{
+					"hash":         hex.EncodeToString(block.Proof.Hash[:]),
+					"quality":      block.Proof.Quality,
+					"plotID":       hex.EncodeToString(block.Proof.PlotID[:]),
+					"index":        block.Proof.Index,
+					"farmerPubKey": hex.EncodeToString(block.Proof.FarmerPubKey[:]),
+				}
+			}
+
+			return map[string]interface{}{
+				"height":     block.Height,
+				"hash":       hex.EncodeToString(blockHash[:]),
+				"prevHash":   hex.EncodeToString(block.PrevHash[:]),
+				"timestamp":  block.TimestampUnix,
+				"difficulty": block.Difficulty,
+				"challenge":  hex.EncodeToString(block.Challenge[:]),
+				"farmerAddr": block.FarmerAddr,
+				"txCount":    len(block.Txs),
+				"txs":        formattedTxs,
+				"proof":      proofData,
+			}, nil
+		}
+	}
+
+	return nil, fmt.Errorf("block with hash %x not found", hash)
+}
+
 // handleSnapshotCommand handles the 'snapshot' subcommand
 func handleSnapshotCommand() {
 	if len(os.Args) < 3 {
