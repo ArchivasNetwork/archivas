@@ -27,6 +27,7 @@ import (
 	"github.com/ArchivasNetwork/archivas/types"
 	"github.com/ArchivasNetwork/archivas/wallet"
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -49,6 +50,7 @@ type NodeState interface {
 type FarmingServer struct {
 	worldState    *ledger.WorldState
 	mempool       *mempool.Mempool
+	evmMempool    *evm.EVMMempool      // EVM transaction pool
 	nodeState     NodeState
 	ethHandler    *ETHHandler // ETH JSON-RPC handler
 	faucetEnabled bool
@@ -103,10 +105,25 @@ func NewFarmingServer(ws *ledger.WorldState, mp *mempool.Mempool, ns NodeState) 
 	// Create EVM StateDB adapter that bridges WorldState with EVM
 	stateDB := evm.NewWorldStateAdapter(ws)
 	
+	// Create EVM mempool with WorldState access
+	evmMempool := evm.NewEVMMempool(
+		func(addr common.Address) *big.Int {
+			// Convert common.Address to address.EVMAddress
+			evmAddr := address.EVMAddress(addr)
+			return stateDB.GetBalance(evmAddr)
+		},
+		func(addr common.Address) uint64 {
+			// Convert common.Address to address.EVMAddress
+			evmAddr := address.EVMAddress(addr)
+			return stateDB.GetNonce(evmAddr)
+		},
+	)
+	
 	// Initialize ETH JSON-RPC handler
 	ethHandler := NewETHHandler(
 		1644, // Betanet chain ID
 		stateDB,
+		evmMempool,
 		func() uint64 {
 			height, _, _ := ns.GetStatus()
 			return height
@@ -126,84 +143,11 @@ func NewFarmingServer(ws *ledger.WorldState, mp *mempool.Mempool, ns NodeState) 
 			return nil, fmt.Errorf("receipt not found")
 		},
 		func(tx *types.EVMTransaction) error {
-			// Submit EVM transaction to mempool
-			log.Printf("[submitTx] Submitting EVM transaction from %s, nonce=%d, value=%s",
-				tx.From().Hex(), tx.Nonce(), tx.Value())
-			
-			// Convert EVMTransaction to ledger.Transaction
-			fromAddr, err := address.EncodeARCVAddress(tx.From(), "arcv")
-			if err != nil {
-				return fmt.Errorf("failed to encode from address: %v", err)
-			}
-			
-			var toAddr string
-			if tx.To() != nil {
-				toAddr, err = address.EncodeARCVAddress(*tx.To(), "arcv")
-				if err != nil {
-					return fmt.Errorf("failed to encode to address: %v", err)
-				}
-			}
-			
-			// Convert value from Wei (18 decimals) to RCHV base units (8 decimals)
-			// Wei = RCHV * 10^10
-			valueWei := tx.Value()
-			if valueWei == nil {
-				valueWei = big.NewInt(0)
-			}
-			
-			// Divide by 10^10 to convert from Wei to RCHV base units
-			divisor := big.NewInt(10_000_000_000)
-			valueRCHV := new(big.Int).Div(valueWei, divisor)
-			
-			// For now, use a simple fixed fee
-			// TODO: Calculate fee from gas price and gas limit
-			feeRCHV := int64(100) // 0.00000100 RCHV
-			
-			// Encode signature from V, R, S (Ethereum format)
-			// Signature format: R (32 bytes) + S (32 bytes) + V (1 byte)
-			signature := make([]byte, 65)
-			
-			// R and S are 32 bytes each
-			rBytes := tx.R.Bytes()
-			sBytes := tx.S.Bytes()
-			vBytes := tx.V.Bytes()
-			
-			// Pad R and S to 32 bytes (left-pad with zeros if needed)
-			copy(signature[32-len(rBytes):32], rBytes)
-			copy(signature[64-len(sBytes):64], sBytes)
-			
-			// V is the recovery ID (last byte)
-			if len(vBytes) > 0 {
-				signature[64] = vBytes[len(vBytes)-1]
-			}
-			
-			// For SenderPubKey, we need to recover the public key from the signature
-			// For now, we'll use a placeholder since the transaction verification
-			// will derive it from the signature
-			// TODO: Properly recover public key using secp256k1
-			senderPubKey := []byte{} // Will be recovered during verification
-			
-			// Create ledger transaction
-			ledgerTx := ledger.Transaction{
-				From:         fromAddr,
-				To:           toAddr,
-				Amount:       valueRCHV.Int64(),
-				Fee:          feeRCHV,
-				Nonce:        tx.Nonce(),
-				SenderPubKey: senderPubKey,
-				Signature:    signature,
-			}
-			
-			log.Printf("[submitTx] Encoded signature: R=%d bytes, S=%d bytes, V=%d",
-				len(rBytes), len(sBytes), signature[64])
-			
-			// Add to mempool
-			mp.Add(ledgerTx)
-			
-			log.Printf("[submitTx] Transaction added to mempool: from=%s, to=%s, amount=%d, nonce=%d",
-				fromAddr, toAddr, ledgerTx.Amount, ledgerTx.Nonce)
-			
-			return nil
+			// This is the OLD submitTx that converts to legacy format
+			// It's now replaced by eth_sendRawTransaction which uses the proper EVM pipeline
+			// We keep this as a fallback but it will not be used for MetaMask transactions
+			log.Printf("[submitTx] WARNING: Using legacy EVM submission path - prefer eth_sendRawTransaction")
+			return fmt.Errorf("legacy EVM submission deprecated - use eth_sendRawTransaction")
 		},
 		func() int {
 			return ns.GetPeerCount()
@@ -213,6 +157,7 @@ func NewFarmingServer(ws *ledger.WorldState, mp *mempool.Mempool, ns NodeState) 
 	return &FarmingServer{
 		worldState:    ws,
 		mempool:       mp,
+		evmMempool:    evmMempool,
 		nodeState:     ns,
 		ethHandler:    ethHandler,
 		faucetEnabled: false,

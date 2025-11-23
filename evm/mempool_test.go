@@ -1,10 +1,9 @@
-package node
+package evm
 
 import (
 	"math/big"
 	"testing"
 
-	"github.com/ArchivasNetwork/archivas/evm"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -21,7 +20,7 @@ func mockGetNonce(addr common.Address) uint64 {
 }
 
 // Helper to create a test transaction
-func createTestTx(t *testing.T, nonce uint64, gasPrice *big.Int, value *big.Int) *evm.EvmTx {
+func createTestTx(t *testing.T, nonce uint64, gasPrice *big.Int, value *big.Int) *EvmTx {
 	privKey, err := crypto.GenerateKey()
 	if err != nil {
 		t.Fatalf("Failed to generate key: %v", err)
@@ -51,7 +50,7 @@ func createTestTx(t *testing.T, nonce uint64, gasPrice *big.Int, value *big.Int)
 		t.Fatalf("Failed to marshal tx: %v", err)
 	}
 	
-	evmTx, err := evm.FromRawTransaction(rawTx, chainID)
+	evmTx, err := FromRawTransaction(rawTx, chainID)
 	if err != nil {
 		t.Fatalf("Failed to decode tx: %v", err)
 	}

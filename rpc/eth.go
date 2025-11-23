@@ -21,11 +21,12 @@ import (
 type ETHHandler struct {
 	chainID      uint64
 	stateDB      evm.StateDB
+	evmMempool   *evm.EVMMempool // Direct access to EVM mempool
 	getHeight    func() uint64
 	getBlock     func(height uint64) (interface{}, error) // Changed to interface{} to handle both legacy and types.Block
 	getBlockByHash func(hash [32]byte) (interface{}, error) // Changed to interface{}
 	getReceipt   func(txHash [32]byte) (*types.Receipt, error)
-	submitTx     func(tx *types.EVMTransaction) error
+	submitTx     func(tx *types.EVMTransaction) error // Legacy path, deprecated
 	getPeerCount func() int // For net_peerCount
 }
 
@@ -33,16 +34,18 @@ type ETHHandler struct {
 func NewETHHandler(
 	chainID uint64,
 	stateDB evm.StateDB,
+	evmMempool *evm.EVMMempool,
 	getHeight func() uint64,
 	getBlock func(height uint64) (interface{}, error), // Changed to interface{}
 	getBlockByHash func(hash [32]byte) (interface{}, error), // Changed to interface{}
 	getReceipt func(txHash [32]byte) (*types.Receipt, error),
-	submitTx func(tx *types.EVMTransaction) error,
+	submitTx func(tx *types.EVMTransaction) error, // Legacy, deprecated
 	getPeerCount func() int,
 ) *ETHHandler {
 	return &ETHHandler{
 		chainID:        chainID,
 		stateDB:        stateDB,
+		evmMempool:     evmMempool,
 		getHeight:      getHeight,
 		getBlock:       getBlock,
 		getBlockByHash: getBlockByHash,
@@ -262,20 +265,27 @@ func (h *ETHHandler) sendRawTransaction_handler(params json.RawMessage) (string,
 	log.Printf("[eth_sendRawTransaction] Received tx: %d bytes, type prefix: 0x%02x", 
 		len(rawTxBytes), rawTxBytes[0])
 
-	// Parse raw transaction using go-ethereum for full typed tx support
-	tx, err := parseRawTransaction(rawTxBytes)
+	// Use proper EVM transaction decoder with signature recovery
+	chainID := big.NewInt(int64(h.chainID))
+	evmTx, err := evm.FromRawTransaction(rawTxBytes, chainID)
 	if err != nil {
-		return "", fmt.Errorf("failed to parse transaction: %v", err)
+		return "", fmt.Errorf("failed to decode transaction: %v", err)
 	}
 
-	// Submit transaction
-	if err := h.submitTx(tx); err != nil {
-		return "", fmt.Errorf("failed to submit transaction: %v", err)
+	log.Printf("[eth_sendRawTransaction] Decoded %s transaction: from=%s, to=%s, nonce=%d, value=%s, gas=%d",
+		evmTx.TxType, evmTx.From.Hex(), 
+		func() string { if evmTx.To != nil { return evmTx.To.Hex() }; return "contract_creation" }(),
+		evmTx.Nonce, evmTx.Value, evmTx.GasLimit)
+
+	// Submit to EVM mempool
+	if err := h.evmMempool.Add(evmTx); err != nil {
+		return "", fmt.Errorf("mempool rejected transaction: %v", err)
 	}
+
+	log.Printf("[eth_sendRawTransaction] Transaction added to EVM mempool: hash=%s", evmTx.Hash.Hex())
 
 	// Return transaction hash
-	txHash := tx.Hash()
-	return "0x" + hex.EncodeToString(txHash[:]), nil
+	return evmTx.Hash.Hex(), nil
 }
 
 // eth_getTransactionCount returns the nonce of an account

@@ -1,4 +1,4 @@
-package node
+package evm
 
 import (
 	"fmt"
@@ -6,7 +6,6 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/ArchivasNetwork/archivas/evm"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -14,11 +13,11 @@ import (
 // This is separate from the legacy mempool to maintain clean separation
 type EVMMempool struct {
 	mu          sync.RWMutex
-	pending     map[common.Hash]*evm.EvmTx          // All pending transactions by hash
-	byAddress   map[common.Address][]*evm.EvmTx     // Transactions grouped by sender
-	baseFee     *big.Int                             // Current base fee (for EIP-1559)
-	maxTxs      int                                  // Maximum transactions in mempool
-	maxTxsPerAccount int                             // Maximum pending txs per account
+	pending     map[common.Hash]*EvmTx          // All pending transactions by hash
+	byAddress   map[common.Address][]*EvmTx     // Transactions grouped by sender
+	baseFee     *big.Int                        // Current base fee (for EIP-1559)
+	maxTxs      int                            // Maximum transactions in mempool
+	maxTxsPerAccount int                       // Maximum pending txs per account
 	
 	// Dependencies
 	getBalance func(common.Address) *big.Int
@@ -31,8 +30,8 @@ func NewEVMMempool(
 	getNonce func(common.Address) uint64,
 ) *EVMMempool {
 	return &EVMMempool{
-		pending:          make(map[common.Hash]*evm.EvmTx),
-		byAddress:        make(map[common.Address][]*evm.EvmTx),
+		pending:          make(map[common.Hash]*EvmTx),
+		byAddress:        make(map[common.Address][]*EvmTx),
 		baseFee:          big.NewInt(1000000000), // 1 gwei default
 		maxTxs:           5000,
 		maxTxsPerAccount: 16,
@@ -42,7 +41,7 @@ func NewEVMMempool(
 }
 
 // Add validates and adds a transaction to the mempool
-func (mp *EVMMempool) Add(tx *evm.EvmTx) error {
+func (mp *EVMMempool) Add(tx *EvmTx) error {
 	mp.mu.Lock()
 	defer mp.mu.Unlock()
 	
@@ -110,9 +109,9 @@ func (mp *EVMMempool) Add(tx *evm.EvmTx) error {
 }
 
 // shouldReplace determines if a new transaction should replace an existing one
-func (mp *EVMMempool) shouldReplace(existing []*evm.EvmTx, newTx *evm.EvmTx) bool {
+func (mp *EVMMempool) shouldReplace(existing []*EvmTx, newTx *EvmTx) bool {
 	// Find the transaction with the lowest gas price
-	var lowest *evm.EvmTx
+	var lowest *EvmTx
 	lowestPrice := new(big.Int).SetUint64(^uint64(0)) // Max uint64
 	
 	for _, tx := range existing {
@@ -177,7 +176,7 @@ func (mp *EVMMempool) Remove(hash common.Hash) {
 }
 
 // Get retrieves a transaction by hash
-func (mp *EVMMempool) Get(hash common.Hash) (*evm.EvmTx, bool) {
+func (mp *EVMMempool) Get(hash common.Hash) (*EvmTx, bool) {
 	mp.mu.RLock()
 	defer mp.mu.RUnlock()
 	tx, exists := mp.pending[hash]
@@ -185,12 +184,12 @@ func (mp *EVMMempool) Get(hash common.Hash) (*evm.EvmTx, bool) {
 }
 
 // GetPending returns all pending transactions for an address, sorted by nonce
-func (mp *EVMMempool) GetPending(addr common.Address) []*evm.EvmTx {
+func (mp *EVMMempool) GetPending(addr common.Address) []*EvmTx {
 	mp.mu.RLock()
 	defer mp.mu.RUnlock()
 	
 	txs := mp.byAddress[addr]
-	result := make([]*evm.EvmTx, len(txs))
+	result := make([]*EvmTx, len(txs))
 	copy(result, txs)
 	return result
 }
@@ -204,11 +203,11 @@ func (mp *EVMMempool) GetPendingCount(addr common.Address) int {
 
 // GetExecutable returns transactions ready for execution
 // These are transactions with nonce matching the account's current nonce
-func (mp *EVMMempool) GetExecutable(maxCount int) []*evm.EvmTx {
+func (mp *EVMMempool) GetExecutable(maxCount int) []*EvmTx {
 	mp.mu.RLock()
 	defer mp.mu.RUnlock()
 	
-	var executable []*evm.EvmTx
+	var executable []*EvmTx
 	
 	// For each address, find the first transaction with matching nonce
 	for addr, txs := range mp.byAddress {
@@ -247,11 +246,11 @@ done:
 }
 
 // GetAll returns all pending transactions
-func (mp *EVMMempool) GetAll() []*evm.EvmTx {
+func (mp *EVMMempool) GetAll() []*EvmTx {
 	mp.mu.RLock()
 	defer mp.mu.RUnlock()
 	
-	all := make([]*evm.EvmTx, 0, len(mp.pending))
+	all := make([]*EvmTx, 0, len(mp.pending))
 	for _, tx := range mp.pending {
 		all = append(all, tx)
 	}
@@ -276,8 +275,8 @@ func (mp *EVMMempool) UpdateBaseFee(baseFee *big.Int) {
 func (mp *EVMMempool) Clear() {
 	mp.mu.Lock()
 	defer mp.mu.Unlock()
-	mp.pending = make(map[common.Hash]*evm.EvmTx)
-	mp.byAddress = make(map[common.Address][]*evm.EvmTx)
+	mp.pending = make(map[common.Hash]*EvmTx)
+	mp.byAddress = make(map[common.Address][]*EvmTx)
 }
 
 // Revalidate removes transactions that are no longer valid
