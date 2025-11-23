@@ -752,15 +752,38 @@ func formatReceipt(receipt *types.Receipt) map[string]interface{} {
 		status = "0x1"
 	}
 
+	// Format logs (if any)
+	formattedLogs := make([]interface{}, len(receipt.Logs))
+	for i, log := range receipt.Logs {
+		formattedLogs[i] = map[string]interface{}{
+			"address":          log.Address.Hex(),
+			"topics":           log.Topics,
+			"data":             "0x" + hex.EncodeToString(log.Data),
+			"blockNumber":      fmt.Sprintf("0x%x", receipt.BlockHeight),
+			"transactionHash":  "0x" + hex.EncodeToString(receipt.TxHash[:]),
+			"transactionIndex": fmt.Sprintf("0x%x", receipt.TxIndex),
+			"logIndex":         fmt.Sprintf("0x%x", i),
+			"removed":          false,
+		}
+	}
+
+	// Compute block hash from block height (simplified)
+	// In full implementation, this would query the actual block hash
+	blockHash := fmt.Sprintf("0x%064x", receipt.BlockHeight)
+
 	result := map[string]interface{}{
-		"transactionHash":  "0x" + hex.EncodeToString(receipt.TxHash[:]),
-		"blockNumber":      fmt.Sprintf("0x%x", receipt.BlockHeight),
-		"transactionIndex": fmt.Sprintf("0x%x", receipt.TxIndex),
-		"from":             receipt.From.Hex(),
-		"gasUsed":          fmt.Sprintf("0x%x", receipt.GasUsed),
+		"transactionHash":   "0x" + hex.EncodeToString(receipt.TxHash[:]),
+		"transactionIndex":  fmt.Sprintf("0x%x", receipt.TxIndex),
+		"blockHash":         blockHash,
+		"blockNumber":       fmt.Sprintf("0x%x", receipt.BlockHeight),
+		"from":              receipt.From.Hex(),
+		"gasUsed":           fmt.Sprintf("0x%x", receipt.GasUsed),
 		"cumulativeGasUsed": fmt.Sprintf("0x%x", receipt.CumulativeGasUsed),
-		"status":           status,
-		"logs":             []interface{}{}, // Simplified
+		"effectiveGasPrice": fmt.Sprintf("0x%x", 1000000000), // 1 gwei default
+		"status":            status,
+		"logs":              formattedLogs,
+		"logsBloom":         "0x" + strings.Repeat("0", 512), // 256 bytes = 512 hex chars
+		"type":              "0x2", // EIP-1559
 	}
 
 	if receipt.To != nil {

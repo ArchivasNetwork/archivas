@@ -8,13 +8,16 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math/big"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/ArchivasNetwork/archivas/address"
 	"github.com/ArchivasNetwork/archivas/config"
 	"github.com/ArchivasNetwork/archivas/consensus"
+	"github.com/ArchivasNetwork/archivas/evm"
 	"github.com/ArchivasNetwork/archivas/health"
 	"github.com/ArchivasNetwork/archivas/internal/buildinfo"
 	"github.com/ArchivasNetwork/archivas/ledger"
@@ -28,6 +31,8 @@ import (
 	"github.com/ArchivasNetwork/archivas/rpc"
 	"github.com/ArchivasNetwork/archivas/snapshot"
 	"github.com/ArchivasNetwork/archivas/storage"
+	"github.com/ArchivasNetwork/archivas/types"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 // Block represents a blockchain block with Proof-of-Space
@@ -86,6 +91,10 @@ type NodeState struct {
 	HasVDF        bool
 	// Backpressure for disk persistence (limit concurrent writes)
 	persistSem chan struct{}
+	// EVM integration (Betanet Phase 2)
+	EVMMempool *evm.EVMMempool // Separate EVM transaction pool
+	EVMEngine  *evm.Engine     // EVM execution engine
+	Receipts   map[string]*types.Receipt // Receipt storage (txHash -> receipt)
 }
 
 func main() {
@@ -417,6 +426,18 @@ func main() {
 
 	// Initialize node state
 	log.Println("[DEBUG] Initializing node state...")
+	// Initialize EVM components (Betanet Phase 2)
+	stateDB := evm.NewWorldStateAdapter(worldState)
+	evmMempool := evm.NewEVMMempool(
+		func(addr common.Address) *big.Int {
+			return stateDB.GetBalance(address.EVMAddress(addr))
+		},
+		func(addr common.Address) uint64 {
+			return stateDB.GetNonce(address.EVMAddress(addr))
+		},
+	)
+	evmEngine := evm.NewEngine(evm.DefaultBetanetConfig(), stateDB)
+	
 	nodeState := &NodeState{
 		Chain:            chain,
 		WorldState:       worldState,
@@ -433,6 +454,10 @@ func main() {
 		GenesisHash:      genesisHash,
 		NetworkID:        *networkID,
 		persistSem:       make(chan struct{}, 5), // Limit to 5 concurrent disk writes
+		// EVM integration
+		EVMMempool:       evmMempool,
+		EVMEngine:        evmEngine,
+		Receipts:         make(map[string]*types.Receipt),
 	}
 
 	metrics.StartWatchdogs(metrics.GroupNode)
@@ -787,6 +812,115 @@ func (ns *NodeState) AcceptBlock(proof *pospace.Proof, farmerAddr string, farmer
 
 	allTxs = append(allTxs, validTxs...)
 
+	// ========== EVM TRANSACTION PROCESSING (Betanet Phase 2) ==========
+	// Pull executable EVM transactions from mempool (sorted by gas price)
+	const maxEvmTxsPerBlock = 100
+	evmTxs := ns.EVMMempool.GetExecutable(maxEvmTxsPerBlock)
+	
+	if len(evmTxs) > 0 {
+		log.Printf("[block] Including %d EVM transactions from mempool", len(evmTxs))
+		
+		// Process each EVM transaction
+		// TODO: Full EVM execution integration (Phase 3)
+		// For now, we accept transactions, create success receipts, and apply balance changes
+		for txIndex, evmTx := range evmTxs {
+			// Apply balance changes directly to WorldState
+			// Convert addresses
+			fromAddrARCV, err := address.EncodeARCVAddress(address.EVMAddress(evmTx.From), "arcv")
+			if err != nil {
+				log.Printf("⚠️  Warning: could not encode from address: %v", err)
+				continue
+			}
+			
+			var toAddrARCV string
+			if evmTx.To != nil {
+				toAddrARCV, err = address.EncodeARCVAddress(address.EVMAddress(*evmTx.To), "arcv")
+				if err != nil {
+					log.Printf("⚠️  Warning: could not encode to address: %v", err)
+					continue
+				}
+			}
+			
+			// Convert value from Wei to RCHV (18 decimals -> 8 decimals)
+			valueWei := evmTx.Value
+			if valueWei == nil {
+				valueWei = big.NewInt(0)
+			}
+			divisor := big.NewInt(10_000_000_000) // 10^10
+			valueRCHV := new(big.Int).Div(valueWei, divisor)
+			
+			// Apply transfer if not contract creation
+			success := true
+			if toAddrARCV != "" {
+				// Get sender and receiver
+				sender, senderExists := ns.WorldState.Accounts[fromAddrARCV]
+				if !senderExists {
+					log.Printf("⚠️  EVM tx failed: sender account %s not found", fromAddrARCV)
+					success = false
+				} else if sender.Balance < valueRCHV.Int64() {
+					log.Printf("⚠️  EVM tx failed: insufficient balance")
+					success = false
+				} else {
+					// Transfer value
+					sender.Balance -= valueRCHV.Int64()
+					sender.Nonce++
+					
+					receiver, ok := ns.WorldState.Accounts[toAddrARCV]
+					if !ok {
+						receiver = &ledger.AccountState{Balance: 0, Nonce: 0}
+						ns.WorldState.Accounts[toAddrARCV] = receiver
+					}
+					receiver.Balance += valueRCHV.Int64()
+					
+					log.Printf("[evm] Transfer: %s -> %s, amount=%d RCHV", 
+						fromAddrARCV, toAddrARCV, valueRCHV.Int64())
+				}
+			}
+			
+			// Create success receipt
+			// Convert addresses to address.EVMAddress
+			fromEVMAddr := address.EVMAddress(evmTx.From)
+			var toEVMAddr *address.EVMAddress
+			if evmTx.To != nil {
+				addr := address.EVMAddress(*evmTx.To)
+				toEVMAddr = &addr
+			}
+			
+			receipt := &types.Receipt{
+				TxHash:            evmTx.Hash,
+				BlockHeight:       nextHeight,
+				TxIndex:           uint32(txIndex),
+				From:              fromEVMAddr,
+				To:                toEVMAddr,
+				GasUsed:           21000, // Simple transfer gas
+				CumulativeGasUsed: uint64((txIndex + 1) * 21000),
+				Status:            0,
+				Logs:              []types.Log{},
+			}
+			
+			if success {
+				receipt.Status = 1 // Success
+			}
+			
+			// Store receipt (txHash as hex string)
+			txHashHex := evmTx.Hash.Hex()
+			ns.Receipts[txHashHex] = receipt
+			
+			// Remove from mempool
+			ns.EVMMempool.Remove(evmTx.Hash)
+			
+			log.Printf("[evm] Processed tx %s: status=%d, gasUsed=%d", 
+				txHashHex[:10], receipt.Status, receipt.GasUsed)
+		}
+	}
+	
+	// Revalidate EVM mempool after block (remove stale transactions)
+	removed := ns.EVMMempool.Revalidate()
+	if removed > 0 {
+		log.Printf("[mempool] Removed %d stale EVM transactions after block", removed)
+	}
+	// ========== END EVM PROCESSING ==========
+
 	// Calculate prev hash
 	var prevHash [32]byte
 	if nextHeight > 0 {
@@ -810,7 +944,7 @@ func (ns *NodeState) AcceptBlock(proof *pospace.Proof, farmerAddr string, farmer
 	ns.Chain = append(ns.Chain, newBlock)
 	ns.CurrentHeight = nextHeight
 
-	// Clear mempool
+	// Clear legacy mempool
 	ns.Mempool.Clear()
 
 	// Generate new challenge for next block
@@ -1525,6 +1659,23 @@ func (ns *NodeState) GetBlockByHash(hash [32]byte) (interface{}, error) {
 	}
 
 	return nil, fmt.Errorf("block with hash %x not found", hash)
+}
+
+// GetEVMMempool returns the EVM transaction mempool (Betanet Phase 2)
+func (ns *NodeState) GetEVMMempool() *evm.EVMMempool {
+	return ns.EVMMempool
+}
+
+// GetReceipt retrieves a transaction receipt by hash (Betanet Phase 2)
+func (ns *NodeState) GetReceipt(txHash string) (*types.Receipt, error) {
+	ns.RLock()
+	defer ns.RUnlock()
+	
+	receipt, ok := ns.Receipts[txHash]
+	if !ok {
+		return nil, fmt.Errorf("receipt not found for transaction %s", txHash)
+	}
+	return receipt, nil
 }
 
 // handleSnapshotCommand handles the 'snapshot' subcommand

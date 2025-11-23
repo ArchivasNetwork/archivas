@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/big"
 	"net"
 	"net/http"
 	"strconv"
@@ -27,7 +26,6 @@ import (
 	"github.com/ArchivasNetwork/archivas/types"
 	"github.com/ArchivasNetwork/archivas/wallet"
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -44,6 +42,9 @@ type NodeState interface {
 	GetRecentBlocks(count int) interface{}
 	GetBlockByHeight(height uint64) (interface{}, error)
 	GetBlockByHash(hash [32]byte) (interface{}, error)
+	// EVM integration (Betanet Phase 2)
+	GetEVMMempool() *evm.EVMMempool
+	GetReceipt(txHash string) (*types.Receipt, error)
 }
 
 // FarmingServer extends Server with farming capabilities
@@ -105,19 +106,8 @@ func NewFarmingServer(ws *ledger.WorldState, mp *mempool.Mempool, ns NodeState) 
 	// Create EVM StateDB adapter that bridges WorldState with EVM
 	stateDB := evm.NewWorldStateAdapter(ws)
 	
-	// Create EVM mempool with WorldState access
-	evmMempool := evm.NewEVMMempool(
-		func(addr common.Address) *big.Int {
-			// Convert common.Address to address.EVMAddress
-			evmAddr := address.EVMAddress(addr)
-			return stateDB.GetBalance(evmAddr)
-		},
-		func(addr common.Address) uint64 {
-			// Convert common.Address to address.EVMAddress
-			evmAddr := address.EVMAddress(addr)
-			return stateDB.GetNonce(evmAddr)
-		},
-	)
+	// Use NodeState's EVM mempool (already initialized in cmd/archivas-node)
+	evmMempool := ns.GetEVMMempool()
 	
 	// Initialize ETH JSON-RPC handler
 	ethHandler := NewETHHandler(
@@ -139,8 +129,9 @@ func NewFarmingServer(ws *ledger.WorldState, mp *mempool.Mempool, ns NodeState) 
 			return ns.GetBlockByHash(hash)
 		},
 		func(txHash [32]byte) (*types.Receipt, error) {
-			// TODO: Implement receipt lookup
-			return nil, fmt.Errorf("receipt not found")
+			// Use NodeState's receipt storage
+			txHashHex := hex.EncodeToString(txHash[:])
+			return ns.GetReceipt(txHashHex)
 		},
 		func(tx *types.EVMTransaction) error {
 			// This is the OLD submitTx that converts to legacy format
