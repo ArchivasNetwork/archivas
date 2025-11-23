@@ -1,0 +1,216 @@
+package evm
+
+import (
+	"math/big"
+
+	"github.com/ArchivasNetwork/archivas/address"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/params"
+)
+
+// VMStateDB wraps our StateDB to implement go-ethereum's vm.StateDB interface
+// This allows us to use go-ethereum's EVM with our state management
+type VMStateDB struct {
+	stateDB StateDB
+	logs    map[common.Hash][]*types.Log
+	refund  uint64
+}
+
+// NewVMStateDB creates a VM-compatible StateDB wrapper
+func NewVMStateDB(stateDB StateDB) *VMStateDB {
+	return &VMStateDB{
+		stateDB: stateDB,
+		logs:    make(map[common.Hash][]*types.Log),
+		refund:  0,
+	}
+}
+
+// CreateAccount creates a new account
+func (s *VMStateDB) CreateAccount(addr common.Address) {
+	evmAddr := address.EVMAddress(addr)
+	s.stateDB.SetBalance(evmAddr, big.NewInt(0))
+	s.stateDB.SetNonce(evmAddr, 0)
+}
+
+// SubBalance subtracts amount from account
+func (s *VMStateDB) SubBalance(addr common.Address, amount *big.Int) {
+	s.stateDB.SubBalance(address.EVMAddress(addr), amount)
+}
+
+// AddBalance adds amount to account
+func (s *VMStateDB) AddBalance(addr common.Address, amount *big.Int) {
+	s.stateDB.AddBalance(address.EVMAddress(addr), amount)
+}
+
+// GetBalance returns account balance
+func (s *VMStateDB) GetBalance(addr common.Address) *big.Int {
+	return s.stateDB.GetBalance(address.EVMAddress(addr))
+}
+
+// GetNonce returns account nonce
+func (s *VMStateDB) GetNonce(addr common.Address) uint64 {
+	return s.stateDB.GetNonce(address.EVMAddress(addr))
+}
+
+// SetNonce sets account nonce
+func (s *VMStateDB) SetNonce(addr common.Address, nonce uint64) {
+	s.stateDB.SetNonce(address.EVMAddress(addr), nonce)
+}
+
+// GetCodeHash returns code hash
+func (s *VMStateDB) GetCodeHash(addr common.Address) common.Hash {
+	hash := s.stateDB.GetCodeHash(address.EVMAddress(addr))
+	return common.BytesToHash(hash[:])
+}
+
+// GetCode returns contract code
+func (s *VMStateDB) GetCode(addr common.Address) []byte {
+	return s.stateDB.GetCode(address.EVMAddress(addr))
+}
+
+// SetCode sets contract code
+func (s *VMStateDB) SetCode(addr common.Address, code []byte) {
+	s.stateDB.SetCode(address.EVMAddress(addr), code)
+}
+
+// GetCodeSize returns contract code size
+func (s *VMStateDB) GetCodeSize(addr common.Address) int {
+	return s.stateDB.GetCodeSize(address.EVMAddress(addr))
+}
+
+// AddRefund adds gas refund
+func (s *VMStateDB) AddRefund(gas uint64) {
+	s.refund += gas
+}
+
+// SubRefund subtracts gas refund
+func (s *VMStateDB) SubRefund(gas uint64) {
+	if s.refund >= gas {
+		s.refund -= gas
+	} else {
+		s.refund = 0
+	}
+}
+
+// GetRefund returns current refund
+func (s *VMStateDB) GetRefund() uint64 {
+	return s.refund
+}
+
+// GetCommittedState returns committed state (same as GetState for our implementation)
+func (s *VMStateDB) GetCommittedState(addr common.Address, key common.Hash) common.Hash {
+	var k [32]byte
+	copy(k[:], key[:])
+	value := s.stateDB.GetState(address.EVMAddress(addr), k)
+	return common.BytesToHash(value[:])
+}
+
+// GetState returns current state
+func (s *VMStateDB) GetState(addr common.Address, key common.Hash) common.Hash {
+	var k [32]byte
+	copy(k[:], key[:])
+	value := s.stateDB.GetState(address.EVMAddress(addr), k)
+	return common.BytesToHash(value[:])
+}
+
+// SetState sets storage state
+func (s *VMStateDB) SetState(addr common.Address, key common.Hash, value common.Hash) {
+	var k, v [32]byte
+	copy(k[:], key[:])
+	copy(v[:], value[:])
+	s.stateDB.SetState(address.EVMAddress(addr), k, v)
+}
+
+// GetTransientState returns transient storage (EIP-1153, not implemented yet)
+func (s *VMStateDB) GetTransientState(addr common.Address, key common.Hash) common.Hash {
+	return common.Hash{}
+}
+
+// SetTransientState sets transient storage (EIP-1153, not implemented yet)
+func (s *VMStateDB) SetTransientState(addr common.Address, key common.Hash, value common.Hash) {
+	// Not implemented yet
+}
+
+// Suicide marks account for deletion
+func (s *VMStateDB) Suicide(addr common.Address) bool {
+	// For now, just zero the balance
+	s.stateDB.SetBalance(address.EVMAddress(addr), big.NewInt(0))
+	return true
+}
+
+// HasSuicided checks if account is marked for deletion
+func (s *VMStateDB) HasSuicided(addr common.Address) bool {
+	// Not tracking suicides yet
+	return false
+}
+
+// Exist checks if account exists
+func (s *VMStateDB) Exist(addr common.Address) bool {
+	return s.stateDB.Exist(address.EVMAddress(addr))
+}
+
+// Empty checks if account is empty (no balance, nonce, code)
+func (s *VMStateDB) Empty(addr common.Address) bool {
+	return s.stateDB.Empty(address.EVMAddress(addr))
+}
+
+// AddressInAccessList checks if address is in access list (EIP-2929)
+func (s *VMStateDB) AddressInAccessList(addr common.Address) bool {
+	// Not tracking access lists yet
+	return false
+}
+
+// SlotInAccessList checks if slot is in access list (EIP-2929)
+func (s *VMStateDB) SlotInAccessList(addr common.Address, slot common.Hash) (addressOk bool, slotOk bool) {
+	// Not tracking access lists yet
+	return false, false
+}
+
+// AddAddressToAccessList adds address to access list (EIP-2929)
+func (s *VMStateDB) AddAddressToAccessList(addr common.Address) {
+	// Not tracking access lists yet
+}
+
+// AddSlotToAccessList adds slot to access list (EIP-2929)
+func (s *VMStateDB) AddSlotToAccessList(addr common.Address, slot common.Hash) {
+	// Not tracking access lists yet
+}
+
+// Prepare prepares the state for transaction execution
+func (s *VMStateDB) Prepare(rules params.Rules, sender, coinbase common.Address, dest *common.Address, precompiles []common.Address, txAccesses types.AccessList) {
+	// Initialize access lists if needed
+	// For now, simplified implementation
+}
+
+// RevertToSnapshot reverts to a previous snapshot
+func (s *VMStateDB) RevertToSnapshot(id int) {
+	s.stateDB.RevertToSnapshot(id)
+}
+
+// Snapshot creates a state snapshot
+func (s *VMStateDB) Snapshot() int {
+	return s.stateDB.Snapshot()
+}
+
+// AddLog adds a log entry
+func (s *VMStateDB) AddLog(log *types.Log) {
+	s.logs[log.TxHash] = append(s.logs[log.TxHash], log)
+}
+
+// AddPreimage adds a preimage (for debugging, not used in production)
+func (s *VMStateDB) AddPreimage(hash common.Hash, preimage []byte) {
+	// Not implemented
+}
+
+// ForEachStorage iterates over storage (not needed for execution)
+func (s *VMStateDB) ForEachStorage(addr common.Address, cb func(key, value common.Hash) bool) error {
+	// Not implemented
+	return nil
+}
+
+// GetLogs returns all logs for a transaction
+func (s *VMStateDB) GetLogs(txHash common.Hash) []*types.Log {
+	return s.logs[txHash]
+}
+

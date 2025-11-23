@@ -4,6 +4,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // EVMAddress represents a 20-byte Ethereum-style address
@@ -138,5 +141,21 @@ func MustParse(s string, hrp string) EVMAddress {
 		panic(fmt.Sprintf("failed to parse address %s: %v", s, err))
 	}
 	return addr
+}
+
+// CreateAddress calculates the contract address for a contract created by the sender at the given nonce
+// This follows Ethereum's CREATE opcode address derivation: address = keccak256(rlp([sender, nonce]))[12:]
+func CreateAddress(sender EVMAddress, nonce uint64) EVMAddress {
+	// Use go-ethereum's CreateAddress function which handles RLP encoding
+	ethAddr := crypto.CreateAddress(common.Address(sender), nonce)
+	return EVMAddress(ethAddr)
+}
+
+// CreateAddress2 calculates the contract address for a CREATE2 deployment
+// address = keccak256(0xff ++ sender ++ salt ++ keccak256(init_code))[12:]
+func CreateAddress2(sender EVMAddress, salt [32]byte, initCodeHash [32]byte) EVMAddress {
+	// Use go-ethereum's CreateAddress2 function
+	ethAddr := crypto.CreateAddress2(common.Address(sender), salt, initCodeHash[:])
+	return EVMAddress(ethAddr)
 }
 

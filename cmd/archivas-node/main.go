@@ -92,9 +92,9 @@ type NodeState struct {
 	// Backpressure for disk persistence (limit concurrent writes)
 	persistSem chan struct{}
 	// EVM integration (Betanet Phase 2)
-	EVMMempool *evm.EVMMempool // Separate EVM transaction pool
-	EVMEngine  *evm.Engine     // EVM execution engine
-	Receipts   map[string]*types.Receipt // Receipt storage (txHash -> receipt)
+	EVMMempool  *evm.EVMMempool // Separate EVM transaction pool
+	// EVMExecutor will be added in Phase 2.1 (full VM integration)
+	Receipts    map[string]*types.Receipt // Receipt storage (txHash -> receipt)
 }
 
 func main() {
@@ -436,7 +436,6 @@ func main() {
 			return stateDB.GetNonce(address.EVMAddress(addr))
 		},
 	)
-	evmEngine := evm.NewEngine(evm.DefaultBetanetConfig(), stateDB)
 	
 	nodeState := &NodeState{
 		Chain:            chain,
@@ -454,9 +453,8 @@ func main() {
 		GenesisHash:      genesisHash,
 		NetworkID:        *networkID,
 		persistSem:       make(chan struct{}, 5), // Limit to 5 concurrent disk writes
-		// EVM integration
+		// EVM integration (Phase 2)
 		EVMMempool:       evmMempool,
-		EVMEngine:        evmEngine,
 		Receipts:         make(map[string]*types.Receipt),
 	}
 

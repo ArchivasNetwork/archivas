@@ -1,0 +1,329 @@
+package evm
+
+import (
+	"fmt"
+	"math/big"
+
+	"github.com/ArchivasNetwork/archivas/address"
+	"github.com/ArchivasNetwork/archivas/types"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/params"
+)
+
+// Executor handles full EVM execution using go-ethereum's VM
+// This enables smart contract deployment and execution
+type Executor struct {
+	chainConfig *params.ChainConfig
+	stateDB     StateDB       // Our state DB
+	vmStateDB   *VMStateDB    // VM-compatible wrapper
+	vmConfig    vm.Config
+}
+
+// NewExecutor creates a new EVM executor with full VM support
+func NewExecutor(chainID *big.Int, stateDB StateDB) *Executor {
+	// Create Ethereum chain config for Archivas Betanet
+	chainConfig := &params.ChainConfig{
+		ChainID:             chainID,
+		HomesteadBlock:      big.NewInt(0),
+		EIP150Block:         big.NewInt(0),
+		EIP155Block:         big.NewInt(0),
+		EIP158Block:         big.NewInt(0),
+		ByzantiumBlock:      big.NewInt(0),
+		ConstantinopleBlock: big.NewInt(0),
+		PetersburgBlock:     big.NewInt(0),
+		IstanbulBlock:       big.NewInt(0),
+		BerlinBlock:         big.NewInt(0),
+		LondonBlock:         big.NewInt(0), // EIP-1559 enabled
+	}
+
+	// VM config with no debugging by default
+	vmConfig := vm.Config{
+		NoBaseFee: false, // Use EIP-1559 base fee
+	}
+
+	return &Executor{
+		chainConfig: chainConfig,
+		stateDB:     stateDB,
+		vmStateDB:   NewVMStateDB(stateDB),
+		vmConfig:    vmConfig,
+	}
+}
+
+// ExecuteTransaction executes a single EVM transaction with full VM support
+func (e *Executor) ExecuteTransaction(
+	evmTx *EvmTx,
+	block *types.Block,
+	txIndex uint32,
+) (*types.Receipt, error) {
+	// Create block context
+	blockContext := vm.BlockContext{
+		CanTransfer: core.CanTransfer,
+		Transfer:    core.Transfer,
+		GetHash:     func(n uint64) common.Hash { return common.Hash{} }, // Simplified
+		Coinbase:    common.Address(block.FarmerAddr),
+		BlockNumber: big.NewInt(int64(block.Height)),
+		Time:        uint64(block.TimestampUnix),
+		Difficulty:  big.NewInt(0), // PoSpace doesn't use difficulty
+		GasLimit:    block.GasLimit,
+		BaseFee:     big.NewInt(1000000000), // 1 gwei base fee
+	}
+
+	// Create transaction context
+	txContext := vm.TxContext{
+		Origin:     common.Address(evmTx.From),
+		GasPrice:   evmTx.EffectiveGasPrice(blockContext.BaseFee),
+		BlobFeeCap: nil, // Not using blob transactions yet
+	}
+
+	// Create EVM instance with VM-compatible StateDB
+	evm := vm.NewEVM(blockContext, txContext, e.vmStateDB, e.chainConfig, e.vmConfig)
+
+	// Prepare sender and recipient
+	sender := common.Address(evmTx.From)
+	
+	// Get sender's current state
+	senderBalance := e.stateDB.GetBalance(address.EVMAddress(sender))
+	senderNonce := e.stateDB.GetNonce(address.EVMAddress(sender))
+
+	// Validate nonce
+	if evmTx.Nonce != senderNonce {
+		return nil, fmt.Errorf("invalid nonce: have %d, want %d", evmTx.Nonce, senderNonce)
+	}
+
+	// Calculate transaction cost (value + gas)
+	gasPrice := evmTx.EffectiveGasPrice(blockContext.BaseFee)
+	gasCost := new(big.Int).Mul(gasPrice, big.NewInt(int64(evmTx.GasLimit)))
+	totalCost := new(big.Int).Add(evmTx.Value, gasCost)
+
+	// Validate balance
+	if senderBalance.Cmp(totalCost) < 0 {
+		return nil, fmt.Errorf("insufficient balance: have %s, need %s", senderBalance, totalCost)
+	}
+
+	// Deduct gas cost upfront
+	e.stateDB.SubBalance(address.EVMAddress(sender), gasCost)
+
+	// Execute the transaction
+	var (
+		ret             []byte
+		gasUsed         uint64
+		failed          bool
+		contractAddr    *address.EVMAddress
+		vmerr           error
+	)
+
+	if evmTx.IsContractCreation() {
+		// Contract deployment
+		ret, contractAddr, gasUsed, vmerr = e.executeContractCreation(
+			evm, sender, evmTx.Value, evmTx.GasLimit, evmTx.Data,
+		)
+		if vmerr != nil {
+			failed = true
+			gasUsed = evmTx.GasLimit // Consume all gas on failure
+		}
+	} else {
+		// Contract call or value transfer
+		recipient := common.Address(*evmTx.To)
+		ret, gasUsed, vmerr = e.executeCall(
+			evm, sender, recipient, evmTx.Value, evmTx.GasLimit, evmTx.Data,
+		)
+		if vmerr != nil {
+			failed = true
+			gasUsed = evmTx.GasLimit // Consume all gas on failure
+		}
+	}
+
+	// Refund unused gas
+	refund := new(big.Int).Mul(
+		gasPrice,
+		big.NewInt(int64(evmTx.GasLimit-gasUsed)),
+	)
+	e.stateDB.AddBalance(address.EVMAddress(sender), refund)
+
+	// Pay gas fees to farmer (miner)
+	gasFee := new(big.Int).Mul(gasPrice, big.NewInt(int64(gasUsed)))
+	e.stateDB.AddBalance(block.FarmerAddr, gasFee)
+
+	// Increment sender nonce (even on failure)
+	e.stateDB.SetNonce(address.EVMAddress(sender), senderNonce+1)
+
+	// Collect logs from VM state and convert to our format
+	vmLogs := e.vmStateDB.GetLogs(common.Hash(evmTx.Hash))
+	logs := make([]types.Log, len(vmLogs))
+	for i, vmLog := range vmLogs {
+		// Convert topics from []common.Hash to [][32]byte
+		topics := make([][32]byte, len(vmLog.Topics))
+		for j, topic := range vmLog.Topics {
+			copy(topics[j][:], topic[:])
+		}
+		
+		logs[i] = types.Log{
+			Address: address.EVMAddress(vmLog.Address),
+			Topics:  topics,
+			Data:    vmLog.Data,
+		}
+	}
+
+	// Determine status
+	status := uint8(1) // Success
+	if failed {
+		status = 0 // Failure
+	}
+
+	// Build receipt
+	receipt := &types.Receipt{
+		TxHash:            evmTx.Hash,
+		BlockHeight:       block.Height,
+		TxIndex:           txIndex,
+		From:              address.EVMAddress(sender),
+		GasUsed:           gasUsed,
+		Status:            status,
+		ContractAddress:   contractAddr,
+	}
+	
+	// Set logs (copy slice)
+	receipt.Logs = make([]types.Log, len(logs))
+	copy(receipt.Logs, logs)
+
+	if evmTx.To != nil {
+		toAddr := address.EVMAddress(*evmTx.To)
+		receipt.To = &toAddr
+	}
+
+	return receipt, nil
+}
+
+// executeContractCreation deploys a new smart contract
+func (e *Executor) executeContractCreation(
+	evm *vm.EVM,
+	sender common.Address,
+	value *big.Int,
+	gasLimit uint64,
+	code []byte,
+) ([]byte, *address.EVMAddress, uint64, error) {
+	// Calculate contract address (CREATE opcode style)
+	nonce := e.stateDB.GetNonce(address.EVMAddress(sender))
+	contractAddr := common.Address(address.CreateAddress(address.EVMAddress(sender), nonce))
+
+	// Execute contract creation
+	ret, _, gasLeft, vmerr := evm.Create(
+		vm.AccountRef(sender),
+		code,
+		gasLimit,
+		value,
+	)
+
+	gasUsed := gasLimit - gasLeft
+	
+	if vmerr != nil {
+		return nil, nil, gasUsed, vmerr
+	}
+
+	// Return deployed contract address
+	evmAddr := address.EVMAddress(contractAddr)
+	return ret, &evmAddr, gasUsed, nil
+}
+
+// executeCall calls an existing contract or transfers value
+func (e *Executor) executeCall(
+	evm *vm.EVM,
+	sender common.Address,
+	recipient common.Address,
+	value *big.Int,
+	gasLimit uint64,
+	input []byte,
+) ([]byte, uint64, error) {
+	// Check if recipient is a contract
+	recipientAddr := address.EVMAddress(recipient)
+	code := e.stateDB.GetCode(recipientAddr)
+
+	var (
+		ret     []byte
+		gasLeft uint64
+		vmerr   error
+	)
+
+	if len(code) > 0 {
+		// Call contract
+		ret, gasLeft, vmerr = evm.Call(
+			vm.AccountRef(sender),
+			recipient,
+			input,
+			gasLimit,
+			value,
+		)
+	} else {
+		// Simple value transfer
+		if value.Sign() > 0 {
+			// Transfer value from sender to recipient
+			if !evm.Context.CanTransfer(e.stateDB, sender, value) {
+				return nil, 0, core.ErrInsufficientFunds
+			}
+			evm.Context.Transfer(e.stateDB, sender, recipient, value)
+		}
+		ret = nil
+		gasLeft = gasLimit - 21000 // Base transaction cost
+		vmerr = nil
+	}
+
+	gasUsed := gasLimit - gasLeft
+	return ret, gasUsed, vmerr
+}
+
+// ExecuteCall simulates a call without modifying state (for eth_call)
+func (e *Executor) ExecuteCall(
+	from common.Address,
+	to *common.Address,
+	value *big.Int,
+	gasLimit uint64,
+	data []byte,
+	blockNumber uint64,
+) ([]byte, uint64, error) {
+	// Create a snapshot to revert after simulation
+	snapshot := e.vmStateDB.Snapshot()
+	defer e.vmStateDB.RevertToSnapshot(snapshot)
+
+	// Create block context for simulation
+	blockContext := vm.BlockContext{
+		CanTransfer: core.CanTransfer,
+		Transfer:    core.Transfer,
+		GetHash:     func(n uint64) common.Hash { return common.Hash{} },
+		Coinbase:    common.Address{}, // No miner for simulation
+		BlockNumber: big.NewInt(int64(blockNumber)),
+		Time:        uint64(0),
+		Difficulty:  big.NewInt(0),
+		GasLimit:    gasLimit,
+		BaseFee:     big.NewInt(1000000000),
+	}
+
+	txContext := vm.TxContext{
+		Origin:   from,
+		GasPrice: big.NewInt(1000000000),
+	}
+
+	evm := vm.NewEVM(blockContext, txContext, e.vmStateDB, e.chainConfig, e.vmConfig)
+
+	if to == nil {
+		// Contract creation simulation
+		ret, _, gasLeft, vmerr := evm.Create(
+			vm.AccountRef(from),
+			data,
+			gasLimit,
+			value,
+		)
+		return ret, gasLimit - gasLeft, vmerr
+	} else {
+		// Contract call or transfer simulation
+		ret, gasLeft, vmerr := evm.Call(
+			vm.AccountRef(from),
+			*to,
+			data,
+			gasLimit,
+			value,
+		)
+		return ret, gasLimit - gasLeft, vmerr
+	}
+}
+
