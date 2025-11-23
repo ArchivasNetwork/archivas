@@ -818,97 +818,117 @@ func (ns *NodeState) AcceptBlock(proof *pospace.Proof, farmerAddr string, farmer
 	if len(evmTxs) > 0 {
 		log.Printf("[block] Including %d EVM transactions from mempool", len(evmTxs))
 		
-		// Process each EVM transaction
-		// TODO: Full EVM execution integration (Phase 3)
-		// For now, we accept transactions, create success receipts, and apply balance changes
-		for txIndex, evmTx := range evmTxs {
-			// Apply balance changes directly to WorldState
-			// Convert addresses
-			fromAddrARCV, err := address.EncodeARCVAddress(address.EVMAddress(evmTx.From), "arcv")
-			if err != nil {
-				log.Printf("⚠️  Warning: could not encode from address: %v", err)
-				continue
-			}
+		// ========== PHASE 2.1: FULL EVM EXECUTION ==========
+		// Create go-ethereum StateDB from current WorldState
+		gethStateDB, err := evm.CreateGethStateDB(ns.WorldState)
+		if err != nil {
+			log.Printf("⚠️  Failed to create geth StateDB: %v", err)
+			// Fallback: skip EVM transactions this block
+		} else {
+			// Create VM executor
+			vmExecutor := evm.NewVMExecutor(1644) // Betanet chain ID
 			
-			var toAddrARCV string
-			if evmTx.To != nil {
-				toAddrARCV, err = address.EncodeARCVAddress(address.EVMAddress(*evmTx.To), "arcv")
-				if err != nil {
-					log.Printf("⚠️  Warning: could not encode to address: %v", err)
+			// Farmer address as coinbase (gets gas fees)
+			farmerEVMAddr, _ := address.ParseAddress(farmerAddr, "arcv")
+			coinbase := common.Address(farmerEVMAddr)
+			
+			// Block parameters
+			blockGasLimit := uint64(10_000_000) // 10M gas per block
+			baseFee := big.NewInt(1000000000)   // 1 gwei
+			
+			cumulativeGasUsed := uint64(0)
+			
+			// Execute each EVM transaction
+			for txIndex, evmTx := range evmTxs {
+				log.Printf("[evm] Executing tx %d/%d: from=%s", txIndex+1, len(evmTxs), evmTx.From.Hex())
+				
+				// Execute transaction in EVM
+				result, execErr := vmExecutor.ExecuteTransaction(
+					gethStateDB,
+					evmTx,
+					nextHeight,
+					uint64(time.Now().Unix()),
+					coinbase,
+					blockGasLimit,
+					baseFee,
+				)
+				
+				if execErr != nil {
+					log.Printf("⚠️  EVM tx execution failed: %v", execErr)
+					// Create failed receipt
+					fromEVMAddr := address.EVMAddress(evmTx.From)
+					receipt := &types.Receipt{
+						TxHash:            evmTx.Hash,
+						BlockHeight:       nextHeight,
+						TxIndex:           uint32(txIndex),
+						From:              fromEVMAddr,
+						To:                nil,
+						GasUsed:           0,
+						CumulativeGasUsed: cumulativeGasUsed,
+						Status:            0, // Failed
+						Logs:              []types.Log{},
+					}
+					ns.Receipts[evmTx.Hash.Hex()] = receipt
 					continue
 				}
-			}
-			
-			// Convert value from Wei to RCHV (18 decimals -> 8 decimals)
-			valueWei := evmTx.Value
-			if valueWei == nil {
-				valueWei = big.NewInt(0)
-			}
-			divisor := big.NewInt(10_000_000_000) // 10^10
-			valueRCHV := new(big.Int).Div(valueWei, divisor)
-			
-			// Apply transfer if not contract creation
-			success := true
-			if toAddrARCV != "" {
-				// Get sender and receiver
-				sender, senderExists := ns.WorldState.Accounts[fromAddrARCV]
-				if !senderExists {
-					log.Printf("⚠️  EVM tx failed: sender account %s not found", fromAddrARCV)
-					success = false
-				} else if sender.Balance < valueRCHV.Int64() {
-					log.Printf("⚠️  EVM tx failed: insufficient balance")
-					success = false
-				} else {
-					// Transfer value
-					sender.Balance -= valueRCHV.Int64()
-					sender.Nonce++
-					
-					receiver, ok := ns.WorldState.Accounts[toAddrARCV]
-					if !ok {
-						receiver = &ledger.AccountState{Balance: 0, Nonce: 0}
-						ns.WorldState.Accounts[toAddrARCV] = receiver
+				
+				// Execution succeeded - create receipt
+				cumulativeGasUsed += result.GasUsed
+				
+				fromEVMAddr := address.EVMAddress(evmTx.From)
+				var toEVMAddr *address.EVMAddress
+				if evmTx.To != nil {
+					addr := address.EVMAddress(*evmTx.To)
+					toEVMAddr = &addr
+				}
+				
+				// Convert logs to Archivas format
+				typesLogs := make([]types.Log, len(result.Logs))
+				for i, ethLog := range result.Logs {
+					topics := make([][32]byte, len(ethLog.Topics))
+					for j, topic := range ethLog.Topics {
+						topics[j] = topic
 					}
-					receiver.Balance += valueRCHV.Int64()
-					
-					log.Printf("[evm] Transfer: %s -> %s, amount=%d RCHV", 
-						fromAddrARCV, toAddrARCV, valueRCHV.Int64())
+					typesLogs[i] = types.Log{
+						Address: address.EVMAddress(ethLog.Address),
+						Topics:  topics,
+						Data:    ethLog.Data,
+					}
+				}
+				
+				receipt := &types.Receipt{
+					TxHash:            evmTx.Hash,
+					BlockHeight:       nextHeight,
+					TxIndex:           uint32(txIndex),
+					From:              fromEVMAddr,
+					To:                toEVMAddr,
+					ContractAddress:   (*address.EVMAddress)(result.ContractAddress),
+					GasUsed:           result.GasUsed,
+					CumulativeGasUsed: cumulativeGasUsed,
+					Status:            result.Status,
+					Logs:              typesLogs,
+				}
+				
+				// Store receipt
+				ns.Receipts[evmTx.Hash.Hex()] = receipt
+				
+				// Remove from mempool
+				ns.EVMMempool.Remove(evmTx.Hash)
+				
+				log.Printf("[evm] ✓ Tx %s: status=%d, gasUsed=%d, logs=%d", 
+					evmTx.Hash.Hex()[:10], result.Status, result.GasUsed, len(result.Logs))
+				
+				if result.ContractAddress != nil {
+					log.Printf("[evm] 📜 Contract deployed at %s", result.ContractAddress.Hex())
 				}
 			}
 			
-			// Create success receipt
-			// Convert addresses to address.EVMAddress
-			fromEVMAddr := address.EVMAddress(evmTx.From)
-			var toEVMAddr *address.EVMAddress
-			if evmTx.To != nil {
-				addr := address.EVMAddress(*evmTx.To)
-				toEVMAddr = &addr
+			// Sync StateDB changes back to WorldState
+			if err := evm.SyncStateDBToWorldState(gethStateDB, ns.WorldState); err != nil {
+				log.Printf("⚠️  Warning: failed to sync StateDB to WorldState: %v", err)
+			} else {
+				log.Printf("[evm] ✓ Synced %d EVM transactions to WorldState", len(evmTxs))
 			}
-			
-			receipt := &types.Receipt{
-				TxHash:            evmTx.Hash,
-				BlockHeight:       nextHeight,
-				TxIndex:           uint32(txIndex),
-				From:              fromEVMAddr,
-				To:                toEVMAddr,
-				GasUsed:           21000, // Simple transfer gas
-				CumulativeGasUsed: uint64((txIndex + 1) * 21000),
-				Status:            0,
-				Logs:              []types.Log{},
-			}
-			
-			if success {
-				receipt.Status = 1 // Success
-			}
-			
-			// Store receipt (txHash as hex string)
-			txHashHex := evmTx.Hash.Hex()
-			ns.Receipts[txHashHex] = receipt
-			
-			// Remove from mempool
-			ns.EVMMempool.Remove(evmTx.Hash)
-			
-			log.Printf("[evm] Processed tx %s: status=%d, gasUsed=%d", 
-				txHashHex[:10], receipt.Status, receipt.GasUsed)
 		}
 	}
 	

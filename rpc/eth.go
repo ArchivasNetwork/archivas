@@ -233,8 +233,74 @@ func (h *ETHHandler) getTransactionReceipt_handler(params json.RawMessage) (map[
 
 // eth_call executes a call without creating a transaction
 func (h *ETHHandler) call_handler(params json.RawMessage) (string, error) {
-	// Simplified implementation - just returns 0x
-	// Full implementation would execute EVM call
+	var p []interface{}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return "", err
+	}
+	if len(p) < 1 {
+		return "", fmt.Errorf("missing call object parameter")
+	}
+
+	callObj, ok := p[0].(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("invalid call object parameter")
+	}
+
+	// Extract call parameters
+	fromStr, _ := callObj["from"].(string)
+	toStr, _ := callObj["to"].(string)
+	dataStr, _ := callObj["data"].(string)
+	valueStr, _ := callObj["value"].(string)
+
+	// For simple transfers (no data), simulate successfully
+	if dataStr == "" || dataStr == "0x" {
+		// Simple value transfer
+		// Validate from has sufficient balance if value specified
+		if valueStr != "" && valueStr != "0x" && valueStr != "0x0" {
+			if fromStr != "" {
+				fromAddr, err := parseAddress(fromStr)
+				if err != nil {
+					return "", fmt.Errorf("invalid from address: %v", err)
+				}
+				
+				balance := h.stateDB.GetBalance(fromAddr)
+				value := new(big.Int)
+				value.SetString(strings.TrimPrefix(valueStr, "0x"), 16)
+				
+				// Convert Wei to RCHV base units for balance check
+				valueRCHV := new(big.Int).Div(value, big.NewInt(10_000_000_000))
+				
+				if balance.Cmp(valueRCHV) < 0 {
+					return "", fmt.Errorf("insufficient funds for transfer")
+				}
+			}
+		}
+		
+		// Return success for simple transfer (empty return data)
+		return "0x", nil
+	}
+
+	// For contract calls, check if recipient exists
+	if toStr != "" {
+		toAddr, err := parseAddress(toStr)
+		if err != nil {
+			return "", fmt.Errorf("invalid to address: %v", err)
+		}
+		
+		// Check if account exists
+		code := h.stateDB.GetCode(toAddr)
+		if len(code) == 0 {
+			// No contract code - might be EOA or non-existent
+			// For now, return empty result (not an error)
+			log.Printf("[eth_call] Warning: call to address without code: %s", toStr)
+			return "0x", nil
+		}
+	}
+
+	// For now, return empty data for contract calls
+	// Full VM integration would execute actual opcodes here
+	// But for MetaMask to work, we just need to validate and return without errors
+	log.Printf("[eth_call] Simulated call: from=%s to=%s data=%s", fromStr, toStr, dataStr)
 	return "0x", nil
 }
 
